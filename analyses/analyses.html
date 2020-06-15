@@ -11,7 +11,7 @@
 
 <meta name="author" content="Ian Hussey" />
 
-<meta name="date" content="2020-06-12" />
+<meta name="date" content="2020-06-15" />
 
 <title>The Generic Pattern among IRAP effects</title>
 
@@ -1673,7 +1673,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">The Generic Pattern among IRAP effects</h1>
 <h4 class="author">Ian Hussey</h4>
-<h4 class="date">12 June 2020</h4>
+<h4 class="date">15 June 2020</h4>
 
 </div>
 
@@ -1708,7 +1708,7 @@ div.tocify {
 <span id="cb2-3"><a href="#cb2-3"></a></span>
 <span id="cb2-4"><a href="#cb2-4"></a><span class="co"># get data</span></span>
 <span id="cb2-5"><a href="#cb2-5"></a>data &lt;-<span class="st"> </span></span>
-<span id="cb2-6"><a href="#cb2-6"></a><span class="st">  </span><span class="kw">read.csv</span>(<span class="st">&quot;../data/evaluative IRAPs/processed - D scored/combined data.csv&quot;</span>) <span class="op">%&gt;%</span></span>
+<span id="cb2-6"><a href="#cb2-6"></a><span class="st">  </span><span class="kw">read.csv</span>(<span class="st">&quot;../data/processed/combined data.csv&quot;</span>) <span class="op">%&gt;%</span></span>
 <span id="cb2-7"><a href="#cb2-7"></a><span class="st">  </span><span class="kw">mutate</span>(<span class="dt">gender =</span> <span class="kw">ifelse</span>(<span class="kw">as.character</span>(gender) <span class="op">==</span><span class="st"> &quot;&quot;</span>, <span class="ot">NA</span>, <span class="kw">as.character</span>(gender)))</span>
 <span id="cb2-8"><a href="#cb2-8"></a></span>
 <span id="cb2-9"><a href="#cb2-9"></a></span>

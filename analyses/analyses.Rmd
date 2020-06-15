@@ -55,7 +55,7 @@ options(scipen = 999)
 
 # get data
 data <- 
-  read.csv("../data/evaluative IRAPs/processed - D scored/combined data.csv") %>%
+  read.csv("../data/processed/combined data.csv") %>%
   mutate(gender = ifelse(as.character(gender) == "", NA, as.character(gender)))
 
 
