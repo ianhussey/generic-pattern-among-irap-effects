@@ -162,8 +162,8 @@ data_summary <- data_long_known_stimuli %>%
 p1 <-
   ggplot(data_summary, aes(x = trialtype, y = mean_D, colour = Domain)) +
   geom_linerange(aes(ymax = mean_D + (1.96*se_D),
-                    ymin = mean_D + (-1.96*se_D)),
-                position = position_dodge(width = .5)) +
+                     ymin = mean_D + (-1.96*se_D)),
+                 position = position_dodge(width = .5)) +
   geom_point(aes(shape = Domain),
              size = 2.5,
              position = position_dodge(width = .5)) +
