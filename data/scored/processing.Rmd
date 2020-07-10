@@ -1,0 +1,160 @@
+---
+title: "Process data from rts to D scores"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+
+# set seed for computational reproducibility
+set.seed(42)
+
+# dependencies
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+# function to round all numeric vars in a data frame
+round_df <- function(df, n_digits = 3) {
+  df %>% mutate_if(is.numeric, round, digits = n_digits)
+}
+
+# using Ruscio's own code
+ruscios_A_function <- function(x, y) {
+    nx <- length(x)
+    ny <- length(y)
+    rx <- sum(rank(c(x, y))[1:nx])
+    A = (rx / nx - (nx + 1) / 2) / ny
+    return(A)
+}
+
+ruscios_A <- function(data, variable = "rt", group = "block_type", value1 = "incon", value2 = "con") {
+  # Ensure data is a data frame (e.g., not a tbl_data)
+  data <- as.data.frame(data)
+  # Select the observations for group 1
+  x <- data[data[[group]] == value1, variable]
+  # Select the observations for group 2
+  y <- data[data[[group]] == value2, variable]
+  A.obs <- ruscios_A_function(x, y)
+  return(as.numeric(A.obs))
+}
+
+# table format in output
+options(knitr.table.format = "html") 
+
+```
+
+# Nonword IRAP
+
+Calculate D scores
+
+```{r}
+
+data_all <- read.csv("../trial level/data_trial_level_nonwords.csv") 
+
+# Exclude outliers on the basis of median mean_rt +/- 2MAD by domain
+data_outliers <- data_all %>%
+  distinct(unique_id, .keep_all = TRUE) %>%
+  select(unique_id, mean_rt) %>%
+  mutate(median_mean_rt = median(mean_rt, na.rm = TRUE),
+         mad_mean_rt = mad(mean_rt, na.rm = TRUE)) %>%
+  # exclude median +- 2MAD
+  mutate(rt_outlier = ifelse(mean_rt < median_mean_rt-mad_mean_rt*2 |
+                            mean_rt > median_mean_rt+mad_mean_rt*2, TRUE, FALSE)) %>%
+  filter(rt_outlier == FALSE) %>%
+  select(unique_id, rt_outlier) %>%
+  full_join(data_all, by = "unique_id") %>%
+  mutate(rt_outlier = ifelse(is.na(rt_outlier), TRUE, rt_outlier))
+
+data_demographics <- data_outliers %>%
+  distinct(unique_id, .keep_all = TRUE) %>%
+  select(unique_id, gender, age, block_order, rt_outlier, timepoint, domain)
+
+data_D_scores_overall <- data_outliers %>%
+  filter(rt <= 10000) %>%
+  group_by(unique_id) %>%
+  summarize(mean_con = mean(rt[block_type == "con"], na.rm = TRUE),
+            mean_incon = mean(rt[block_type == "incon"], na.rm = TRUE),
+            sd = mean(rt, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(D = (mean_incon - mean_con)/sd) %>%
+  select(unique_id, D_overall = D) 
+
+data_D_scores_trial_type <- data_outliers %>%
+  filter(rt <= 10000) %>%
+  group_by(unique_id, trial_type) %>%
+  summarize(mean_con = mean(rt[block_type == "con"], na.rm = TRUE),
+            mean_incon = mean(rt[block_type == "incon"], na.rm = TRUE),
+            sd = mean(rt, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(D = (mean_incon - mean_con)/sd) %>%
+  select(unique_id, trial_type, D) %>%
+  spread(trial_type, D) %>%
+  rename(D_tt1 = tt1,
+         D_tt2 = tt2,
+         D_tt3 = tt3,
+         D_tt4 = tt4) 
+
+data_scored_nonwords <- data_demographics %>%
+  full_join(data_D_scores_trial_type, by = "unique_id") %>%
+  full_join(data_D_scores_overall, by = "unique_id") %>%
+  select(unique_id, domain, timepoint, 
+         block_order, rt_outlier, 
+         D_overall, D_tt1, D_tt2, D_tt3, D_tt4)
+
+```
+
+# Other IRAPs
+
+data processing already done in the main project, see that repo.
+
+take only domains that meet inclusion criteria: single word evaluative attribute stimuli, TRUE/FALSE response options.
+
+```{r}
+
+data_scored_other_domains <- 
+  read.csv("../../../irap-reliability-meta-analysis/data/scored/data_scored.csv") %>%
+  filter(domain %in% c("ADHD", "Body image", "Clinton-Trump", "Death (1)", "Death (3)",
+                       "Friend-Enemy", "Gender (2)", "Lincoln-Hitler", "PTSD", "Race (1)", "Race (2)",
+                       "Race (3)", "Religion", "Rich-Poor", "Schizophrenia", "Hunger") & 
+           timepoint == "baseline") %>%
+  mutate(domain = ifelse(domain == "Gender (2)", "Gender", domain),
+         domain = ifelse(domain == "Domain (3)", "Domain (2)", domain)) %>%
+  select(-A_overall, -A_tt1, -A_tt2, -A_tt3, -A_tt4)
+
+```
+
+NB Domain 3 recoded to Domain 2
+
+# Combine
+
+```{r}
+
+data_scored <- bind_rows(data_scored_other_domains, 
+                         data_scored_nonwords)
+
+write_csv(data_scored, "data_scored.csv")
+
+```
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
+
