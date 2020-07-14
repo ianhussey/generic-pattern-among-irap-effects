@@ -11,7 +11,7 @@
 
 <meta name="author" content="Ian Hussey" />
 
-<meta name="date" content="2020-07-09" />
+<meta name="date" content="2020-07-14" />
 
 <title>Process data from rts to D scores</title>
 
@@ -1664,7 +1664,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Process data from rts to D scores</h1>
 <h4 class="author">Ian Hussey</h4>
-<h4 class="date">09 July 2020</h4>
+<h4 class="date">14 July 2020</h4>
 
 </div>
 
@@ -1763,16 +1763,17 @@ div.tocify {
 <h1>Other IRAPs</h1>
 <p>data processing already done in the main project, see that repo.</p>
 <p>take only domains that meet inclusion criteria: single word evaluative attribute stimuli, TRUE/FALSE response options.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1"></a>data_scored_other_domains &lt;-<span class="st"> </span></span>
-<span id="cb3-2"><a href="#cb3-2"></a><span class="st">  </span><span class="kw">read.csv</span>(<span class="st">&quot;../../../irap-reliability-meta-analysis/data/scored/data_scored.csv&quot;</span>) <span class="op">%&gt;%</span></span>
-<span id="cb3-3"><a href="#cb3-3"></a><span class="st">  </span><span class="kw">filter</span>(domain <span class="op">%in%</span><span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;ADHD&quot;</span>, <span class="st">&quot;Body image&quot;</span>, <span class="st">&quot;Clinton-Trump&quot;</span>, <span class="st">&quot;Death (1)&quot;</span>, <span class="st">&quot;Death (3)&quot;</span>,</span>
-<span id="cb3-4"><a href="#cb3-4"></a>                       <span class="st">&quot;Friend-Enemy&quot;</span>, <span class="st">&quot;Gender (2)&quot;</span>, <span class="st">&quot;Lincoln-Hitler&quot;</span>, <span class="st">&quot;PTSD&quot;</span>, <span class="st">&quot;Race (1)&quot;</span>, <span class="st">&quot;Race (2)&quot;</span>,</span>
-<span id="cb3-5"><a href="#cb3-5"></a>                       <span class="st">&quot;Race (3)&quot;</span>, <span class="st">&quot;Religion&quot;</span>, <span class="st">&quot;Rich-Poor&quot;</span>, <span class="st">&quot;Schizophrenia&quot;</span>, <span class="st">&quot;Hunger&quot;</span>) <span class="op">&amp;</span><span class="st"> </span></span>
-<span id="cb3-6"><a href="#cb3-6"></a><span class="st">           </span>timepoint <span class="op">==</span><span class="st"> &quot;baseline&quot;</span>) <span class="op">%&gt;%</span></span>
-<span id="cb3-7"><a href="#cb3-7"></a><span class="st">  </span><span class="kw">mutate</span>(<span class="dt">domain =</span> <span class="kw">ifelse</span>(domain <span class="op">==</span><span class="st"> &quot;Gender (2)&quot;</span>, <span class="st">&quot;Gender&quot;</span>, domain),</span>
-<span id="cb3-8"><a href="#cb3-8"></a>         <span class="dt">domain =</span> <span class="kw">ifelse</span>(domain <span class="op">==</span><span class="st"> &quot;Domain (3)&quot;</span>, <span class="st">&quot;Domain (2)&quot;</span>, domain)) <span class="op">%&gt;%</span></span>
-<span id="cb3-9"><a href="#cb3-9"></a><span class="st">  </span><span class="kw">select</span>(<span class="op">-</span>A_overall, <span class="op">-</span>A_tt1, <span class="op">-</span>A_tt2, <span class="op">-</span>A_tt3, <span class="op">-</span>A_tt4)</span></code></pre></div>
-<p>NB Domain 3 recoded to Domain 2</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1"></a><span class="co"># take data from main dataset repo (https://github.com/ianhussey/irap-reliability-meta-analysis)</span></span>
+<span id="cb3-2"><a href="#cb3-2"></a>data_scored_other_domains &lt;-<span class="st"> </span></span>
+<span id="cb3-3"><a href="#cb3-3"></a><span class="st">  </span><span class="kw">read.csv</span>(<span class="st">&quot;../../../irap-reliability-meta-analysis/data/scored/data_scored.csv&quot;</span>) <span class="op">%&gt;%</span></span>
+<span id="cb3-4"><a href="#cb3-4"></a><span class="st">  </span><span class="kw">filter</span>(domain <span class="op">%in%</span><span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;ADHD&quot;</span>, <span class="st">&quot;Body image&quot;</span>, <span class="st">&quot;Clinton-Trump&quot;</span>, <span class="st">&quot;Death (1)&quot;</span>, <span class="st">&quot;Death (3)&quot;</span>,</span>
+<span id="cb3-5"><a href="#cb3-5"></a>                       <span class="st">&quot;Friend-Enemy&quot;</span>, <span class="st">&quot;Gender (2)&quot;</span>, <span class="st">&quot;Lincoln-Hitler&quot;</span>, <span class="st">&quot;PTSD&quot;</span>, <span class="st">&quot;Race (1)&quot;</span>, <span class="st">&quot;Race (2)&quot;</span>,</span>
+<span id="cb3-6"><a href="#cb3-6"></a>                       <span class="st">&quot;Race (3)&quot;</span>, <span class="st">&quot;Religion&quot;</span>, <span class="st">&quot;Rich-Poor&quot;</span>, <span class="st">&quot;Schizophrenia&quot;</span>, <span class="st">&quot;Hunger&quot;</span>) <span class="op">&amp;</span><span class="st"> </span></span>
+<span id="cb3-7"><a href="#cb3-7"></a><span class="st">           </span>timepoint <span class="op">==</span><span class="st"> &quot;baseline&quot;</span>) <span class="op">%&gt;%</span></span>
+<span id="cb3-8"><a href="#cb3-8"></a><span class="st">  </span><span class="kw">mutate</span>(<span class="dt">domain =</span> <span class="kw">ifelse</span>(domain <span class="op">==</span><span class="st"> &quot;Gender (2)&quot;</span>, <span class="st">&quot;Gender&quot;</span>, domain),</span>
+<span id="cb3-9"><a href="#cb3-9"></a>         <span class="dt">domain =</span> <span class="kw">ifelse</span>(domain <span class="op">==</span><span class="st"> &quot;Death (3)&quot;</span>, <span class="st">&quot;Death (2)&quot;</span>, domain)) <span class="op">%&gt;%</span></span>
+<span id="cb3-10"><a href="#cb3-10"></a><span class="st">  </span><span class="kw">select</span>(<span class="op">-</span>A_overall, <span class="op">-</span>A_tt1, <span class="op">-</span>A_tt2, <span class="op">-</span>A_tt3, <span class="op">-</span>A_tt4)</span></code></pre></div>
+<p>NB death 3 recoded to death 2 for plotting</p>
 </div>
 <div id="combine" class="section level1">
 <h1>Combine</h1>

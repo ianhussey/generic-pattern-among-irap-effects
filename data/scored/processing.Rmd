@@ -124,6 +124,7 @@ take only domains that meet inclusion criteria: single word evaluative attribute
 
 ```{r}
 
+# take data from main dataset repo (https://github.com/ianhussey/irap-reliability-meta-analysis)
 data_scored_other_domains <- 
   read.csv("../../../irap-reliability-meta-analysis/data/scored/data_scored.csv") %>%
   filter(domain %in% c("ADHD", "Body image", "Clinton-Trump", "Death (1)", "Death (3)",
@@ -131,12 +132,12 @@ data_scored_other_domains <-
                        "Race (3)", "Religion", "Rich-Poor", "Schizophrenia", "Hunger") & 
            timepoint == "baseline") %>%
   mutate(domain = ifelse(domain == "Gender (2)", "Gender", domain),
-         domain = ifelse(domain == "Domain (3)", "Domain (2)", domain)) %>%
+         domain = ifelse(domain == "Death (3)", "Death (2)", domain)) %>%
   select(-A_overall, -A_tt1, -A_tt2, -A_tt3, -A_tt4)
 
 ```
 
-NB Domain 3 recoded to Domain 2
+NB death 3 recoded to death 2 for plotting
 
 # Combine
 
