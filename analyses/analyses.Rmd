@@ -29,24 +29,30 @@ library(kableExtra)
 library(ez)
 library(schoRsch)
 library(plotrix)
-library(BayesFactor)
 library(rsample)
 library(broom)
 library(purrr)
+library(furrr)
 library(patchwork)
 library(lme4)
 library(sjPlot)
+
+# run furrr:::future_map in parallel
+plan(multiprocess)
 
 # function to round all numeric vars in a data frame
 round_df <- function(df, n_digits = 3) {
   df %>% mutate_if(is.numeric, round, digits = n_digits)
 }
 
+# load a tweaked version of schoRsch::anova_out that removes rounding of effect sizes, for use in bootstrapping
+source("anova_out_no_rounding.R")
+
 # table format in output
 options(knitr.table.format = "html") 
 
-# disable scientific notation
-options(scipen = 999) 
+# # disable scientific notation
+# options(scipen = 999) 
 
 # set seed
 set.seed(42)
@@ -88,7 +94,7 @@ data_long <- data_processed_outliers_removed %>%
          unique_id = as.factor(unique_id))
 
 data_long_known_stimuli <- data_long %>%
-  filter(Domain != "Non-words")
+  filter(Domain != "Non-words") 
 
 data_long_unknown_stimuli <- data_long %>%
   mutate(Stimuli = as.factor(ifelse(Domain == "Non-words", "Non-words", "Known words")))
@@ -107,7 +113,7 @@ data_processed %>%
 
 data_processed %>% 
   filter(rt_outlier == FALSE) %>% 
-  summarize(n_excluded = n()) %>% 
+  summarize(n_after_exclusions = n()) %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
@@ -138,9 +144,7 @@ data_processed_outliers_removed %>%
 
 # Analyses
 
-## Comparing domains
-
-### Estimate generic pattern via meta analysis
+## Estimate generic pattern via meta analysis
 
 NB plotting uses hard coded values - must update if results were to change due to data processing changes etc!
 
@@ -161,7 +165,7 @@ data_generic_pattern <-
              D_ci_upper = c(0.126, 0.112-0.053, 0.112-0.162, 0.112-0.091),
              dummy = c("dummy", "dummy", "dummy", "dummy"))
 
-p0 <-
+plot_generic_pattern <-
   data_generic_pattern %>%
   separate(trial_type, into = c("Category", "Attribute"), sep = "\n") %>%
   mutate(Attribute = recode(Attribute,
@@ -186,9 +190,13 @@ p0 <-
   scale_linetype_manual(values = c("solid", "longdash"))+
   theme_minimal()
 
-p0
+plot_generic_pattern
+
+write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
 
 ```
+
+## Compare domains
 
 ### Plot
 
@@ -201,7 +209,8 @@ data_D_scores_summary <- data_long_known_stimuli %>%
             D_ci_upper = D_mean + 1.96*std.error(D, na.rm = TRUE)) %>%
   ungroup() 
 
-p1 <- ggplot() +
+plot_domains <- 
+  ggplot() +
   geom_linerange(data = data_D_scores_summary, 
                  aes(x = trial_type, 
                      y = D_mean, 
@@ -236,66 +245,9 @@ p1 <- ggplot() +
   #theme_classic()
   theme_minimal()
 
-p1
+plot_domains
 
-```
-
-### Bayes Factors 
-
-These use the equivalent of frequentist type II sum of squares model comparisons for the main effects. 
-
-- BF for the evidence for domain is the BF(D ~ trial_type + domain + unique_id)/BF(D ~ trial_type + unique_id)
-- BF for the evidence for trial type is the BF(D ~ trial_type + domain + unique_id)/BF(D ~ domain + unique_id)
-
-And the equivalent of frequentist type III sum of squares model comparisons for the interaction effect.
-
-- BF for the evidence for trial type is the BF(D ~ trial_type + domain + trial_type:domain + unique_id)/BF(D ~ trial_type + domain + unique_id)
-
-```{r}
-
-if (file.exists("models/fit_bf_anova.RData")) {
-  
-  load("models/fit_bf_anova.RData")
-
-} else {
-
-  fit_bf_anova <-
-    anovaBF(formula = D ~ trial_type * Domain + unique_id,
-            data = data_long_known_stimuli,
-            whichRandom = c("unique_id"),
-            multicore = TRUE)
-  
-  save(fit_bf_anova, file = "models/fit_bf_anova.RData")
-  
-}
-
-# BF inclusions (between multiple alternative models)
-bf_inclusion_domain      <- fit_bf_anova[3] / fit_bf_anova[2]
-bf_inclusion_trial_type  <- fit_bf_anova[3] / fit_bf_anova[1]
-bf_inclusion_interaction <- fit_bf_anova[4] / fit_bf_anova[3]
-
-```
-
-- Domain BF10 = `r round(exp(bf_inclusion_domain@bayesFactor$bf), 4)`
-- Trial type BF10 =  `r round(exp(bf_inclusion_trial_type@bayesFactor$bf), 2)`
-- Interaction effect BF10 = `r round(exp(bf_inclusion_interaction@bayesFactor$bf), 4)`
-
-### Frequentist 
-
-```{r}
-
-fit_anova_freq <- ez::ezANOVA(data     = data_long_known_stimuli,
-                              dv       = D,
-                              within   = trial_type,
-                              between  = Domain,
-                              wid      = unique_id,
-                              type     = 3,
-                              detailed = TRUE)
-
-anova_out(fit_anova_freq, 
-          etasq = "partial", 
-          sph.cor = "no",
-          print = FALSE)$`--- FORMATTED RESULTS ------------------------------------` 
+write_rds(plot_domains, "models/plot_domains.rds")
 
 ```
 
@@ -307,10 +259,10 @@ Bootstrapping via case removal and percentile method with 2000 replications.
 
 ```{r}
 
-if (file.exists("models/boot_fits.RData")) {
+if (file.exists("models/boot_fits_domains.rds")) {
   
-  load("models/boot_fits.RData")
-
+  boot_fits_domains <- read_rds("models/boot_fits_domains.rds")
+  
 } else {
   
   # create bootstraps using out of bag method. makes a df with values that are collapsed dfs.
@@ -344,15 +296,14 @@ if (file.exists("models/boot_fits.RData")) {
     results_etasq <- 
       fit_anova_freq$ANOVA %>%
       mutate(etasq = SSn / sum(SSn)) %>%
-      select(Effect, etasq) %>%
-      round_df(2)
+      select(Effect, etasq) 
     
     # partial eta squared
     results_petasq_and_getasq <- 
-      anova_out(fit_anova_freq, 
-                etasq = "partial", 
-                sph.cor = "no",
-                print = FALSE)$`--- ANOVA RESULTS     ------------------------------------` %>%
+      anova_out_no_rounding(fit_anova_freq, 
+                            etasq = "partial", 
+                            sph.cor = "no",
+                            print = FALSE)$ANOVA_RESULTS %>%
       mutate(petasq = as.numeric(as.character(petasq)),
              getasq = as.numeric(as.character(getasq))) %>%
       select(Effect, petasq, getasq)
@@ -365,124 +316,134 @@ if (file.exists("models/boot_fits.RData")) {
   }
   
   # apply to each bootstrap
-  boot_fits <- boots %>% 
-    mutate(fit = map(splits, helper_function)) %>%
-    unnest(fit) 
+  boot_fits_domains <- boots %>% 
+    mutate(fit = furrr::future_map(splits, helper_function)) %>%
+    unnest(fit) %>%
+    select(-splits)
   
-  save(boot_fits, file = "models/boot_fits.RData")
-
+  write_rds(boot_fits_domains, "models/boot_fits_domains.rds")
+  
 }
 
-boot_estimates <- boot_fits %>%
-    # find CIs using percentile method
-    group_by(Effect) %>%
-    summarize(etasq_median    = quantile(etasq,  0.50),
-              etasq_ci_lower  = quantile(etasq,  0.05),
-              etasq_ci_upper  = quantile(etasq,  0.95),
-              petasq_median   = quantile(petasq, 0.50),
-              petasq_ci_lower = quantile(petasq, 0.05),
-              petasq_ci_upper = quantile(petasq, 0.95),
-              getasq_median   = quantile(getasq, 0.50),
-              getasq_ci_lower = quantile(getasq, 0.05),
-              getasq_ci_upper = quantile(getasq, 0.95))
+boot_fits_domains %>%
+  filter(Effect != "(Intercept)") %>%
+  gather(key, value, c(etasq, petasq, getasq)) %>%
+  ggplot(aes(value)) +
+  geom_density(adjust = 1) +
+  facet_wrap(~ Effect + key, scales = "free", ncol = 3)
 
-boot_estimates %>%
+```
+
+```{r}
+
+# find CIs using percentile method
+boot_estimates_domain <- boot_fits_domains %>%
+  group_by(Effect) %>%
+  dplyr::summarize(etasq_median    = quantile(etasq,  0.50),
+                   etasq_ci_lower  = quantile(etasq,  0.05),
+                   etasq_ci_upper  = quantile(etasq,  0.95),
+                   petasq_median   = quantile(petasq, 0.50),
+                   petasq_ci_lower = quantile(petasq, 0.05),
+                   petasq_ci_upper = quantile(petasq, 0.95),
+                   getasq_median   = quantile(getasq, 0.50),
+                   getasq_ci_lower = quantile(getasq, 0.05),
+                   getasq_ci_upper = quantile(getasq, 0.95)) %>%
+  round_df(3)
+
+boot_estimates_domain %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# plots
+data_for_plotting_domains <- boot_estimates_domain %>%
+  filter(Effect != "(Intercept)") %>%
+  mutate(Effect = recode(Effect,
+                         "trial_type" = "Trial type",
+                         "Domain" = "Domain",
+                         "Domain:trial_type" = "Interaction"),
+         Effect = fct_relevel(Effect, "Interaction", "Domain", "Trial type"),
+         color = ifelse(Effect == "Trial type", FALSE, TRUE))
+
+p1 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, etasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = etasq_ci_lower, ymax = etasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .8) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+p2 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, petasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = petasq_ci_lower, ymax = petasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .25) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta[p]^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+p3 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, getasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = getasq_ci_lower, ymax = getasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .175) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta[g]^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+plot_effect_sizes <- p1 + p2 + p3 + plot_layout(ncol = 1)
+
+plot_effect_sizes
+
+write_rds(plot_effect_sizes, "models/plot_effect_sizes.rds")
 
 ```
 
 NB 90% CIs as squared effect sizes are always positive!
 
-## Comparing known and unknown words
+## Compare known and unknown words
 
 ### Plot
 
 ```{r, fig.height=3, fig.width=5.5}
 
-# plot 1
 data_means <- data_long_unknown_stimuli %>%
   group_by(Stimuli, trial_type) %>%
   dplyr::summarise(mean_D = mean(D),
                    se_D = std.error(D)) %>%
   round_df(2)
 
-p2 <-
+plot_stimuli <-
   ggplot(data_means, aes(x = trial_type, y = mean_D, colour = Stimuli)) +
   geom_linerange(aes(ymax = mean_D + (1.96*se_D),
-                    ymin = mean_D + (-1.96*se_D)),
-                position = position_dodge(width = .2)) +
+                     ymin = mean_D + (-1.96*se_D)),
+                 position = position_dodge(width = .1)) +
   geom_point(aes(shape = Stimuli),
              size = 2.5,
-             position = position_dodge(width = .2)) +
+             position = position_dodge(width = .1)) +
   geom_line(aes(group = Stimuli),
-            position = position_dodge(width = .2)) +
+            position = position_dodge(width = .1)) +
   geom_hline(yintercept=c(0), linetype="dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
   theme_minimal() +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
-p2
+plot_stimuli
 
-```
-
-### Bayes Factors 
-
-These use the equivalent of frequentist type II sum of squares model comparisons for the main effects. 
-
-- BF for the evidence for domain is the BF(D ~ trial_type + stimuli + unique_id)/BF(D ~ trial_type + unique_id)
-- BF for the evidence for trial type is the BF(D ~ trial_type + stimuli + unique_id)/BF(D ~ stimuli + unique_id)
-
-And the equivalent of frequentist type III sum of squares model comparisons for the interaction effect.
-
-- BF for the evidence for trial type is the BF(D ~ trial_type + stimuli + trial_type:stimuli + unique_id)/BF(D ~ trial_type + stimuli + unique_id)
-
-```{r}
-
-if (file.exists("models/fit_bf_anova_2.RData")) {
-  
-  load("models/fit_bf_anova_2.RData")
-  
-} else {
-  
-  fit_bf_anova_2 <-
-    anovaBF(formula = D ~ trial_type * Stimuli + unique_id,
-            data = data_long_unknown_stimuli,
-            whichRandom = c("unique_id"),
-            multicore = TRUE)
-  
-  save(fit_bf_anova_2, file = "models/fit_bf_anova_2.RData")
-  
-}
-
-# BF inclusions (between multiple alternative models)
-bf_inclusion_stimuli     <- fit_bf_anova_2[3] / fit_bf_anova_2[1]
-bf_inclusion_trial_type   <- fit_bf_anova_2[3] / fit_bf_anova_2[2]
-bf_inclusion_interaction <- fit_bf_anova_2[4] / fit_bf_anova_2[3]
-
-```
-
-- Stimuli BF10 = `r round(exp(bf_inclusion_stimuli@bayesFactor$bf), 2)`
-- Trial type BF10 =  `r round(exp(bf_inclusion_trial_type@bayesFactor$bf), 2)`
-- Interaction effect BF10 = `r round(exp(bf_inclusion_interaction@bayesFactor$bf), 2)`
-
-### Frequentist 
-
-```{r}
-
-fit_anova_freq_2 <- ez::ezANOVA(data     = data_long_unknown_stimuli,
-                                dv       = D,
-                                within   = trial_type,
-                                between  = Stimuli,
-                                wid      = unique_id,
-                                type     = 3,
-                                detailed = TRUE)
-
-# results
-anova_out(fit_anova_freq_2, 
-          etasq = "partial", 
-          print = FALSE)$`--- FORMATTED RESULTS ------------------------------------` 
+write_rds(plot_stimuli, "models/plot_stimuli.rds")
 
 ```
 
@@ -494,16 +455,16 @@ Bootstrapping via case removal and percentile method with 2000 replications.
 
 ```{r}
 
-if (file.exists("models/boot_fits_2.RData")) {
+if (file.exists("models/boot_fits_stimuli.rds")) {
   
-  load("models/boot_fits_2.RData")
-
+  boot_fits_stimuli <- read_rds("models/boot_fits_stimuli.rds")
+  
 } else {
   
   # create bootstraps using out of bag method. makes a df with values that are collapsed dfs.
   boots_2 <- data_long_unknown_stimuli %>%
     # reshape so that participants are sampled between bootstraps
-    select(unique_id, stimuli, trial_type, D) %>%
+    select(unique_id, Stimuli, trial_type, D) %>%
     spread(trial_type, D) %>%
     rename(tt1 = `Category 1\npositive`,
            tt2 = `Category 1\nnegative`,
@@ -536,9 +497,9 @@ if (file.exists("models/boot_fits_2.RData")) {
     
     # partial eta squared
     results_petasq_and_getasq_2 <- 
-      anova_out(fit_anova_freq_2, 
-                etasq = "partial", 
-                print = FALSE)$`--- ANOVA RESULTS     ------------------------------------` %>%
+      anova_out_no_rounding(fit_anova_freq_2, 
+                            etasq = "partial", 
+                            print = FALSE)$ANOVA_RESULTS %>%
       mutate(petasq = as.numeric(as.character(petasq)),
              getasq = as.numeric(as.character(getasq))) %>%
       select(Effect, petasq, getasq)
@@ -551,45 +512,36 @@ if (file.exists("models/boot_fits_2.RData")) {
   }
   
   # apply to each bootstrap
-  boot_fits_2 <- boots_2 %>% 
-    mutate(fit = map(splits, helper_function_2)) %>%
-    unnest(fit) 
+  boot_fits_stimuli <- boots_2 %>% 
+    mutate(fit = furrr::future_map(splits, helper_function_2)) %>%
+    unnest(fit) %>%
+    select(-splits)
   
-  save(boot_fits_2, file = "models/boot_fits_2.RData")
-
+  write_rds(boot_fits_stimuli, "models/boot_fits_stimuli.rds")
+  
 }
 
-boot_estimates_2 <- boot_fits_2 %>%
-    # find CIs using percentile method
-    group_by(Effect) %>%
-    summarize(etasq_median    = quantile(etasq,  0.50),
-              etasq_ci_lower  = quantile(etasq,  0.05),
-              etasq_ci_upper  = quantile(etasq,  0.95),
-              petasq_median   = quantile(petasq, 0.50),
-              petasq_ci_lower = quantile(petasq, 0.05),
-              petasq_ci_upper = quantile(petasq, 0.95),
-              getasq_median   = quantile(getasq, 0.50),
-              getasq_ci_lower = quantile(getasq, 0.05),
-              getasq_ci_upper = quantile(getasq, 0.95))
+# find CIs using percentile method
+boot_estimates_stimuli <- boot_fits_stimuli %>%
+  group_by(Effect) %>%
+  dplyr::summarize(etasq_median    = quantile(etasq,  0.50),
+                   etasq_ci_lower  = quantile(etasq,  0.05),
+                   etasq_ci_upper  = quantile(etasq,  0.95),
+                   petasq_median   = quantile(petasq, 0.50),
+                   petasq_ci_lower = quantile(petasq, 0.05),
+                   petasq_ci_upper = quantile(petasq, 0.95),
+                   getasq_median   = quantile(getasq, 0.50),
+                   getasq_ci_lower = quantile(getasq, 0.05),
+                   getasq_ci_upper = quantile(getasq, 0.95)) %>%
+  round_df(3)
 
-boot_estimates_2 %>%
+boot_estimates_stimuli %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
 ```
 
 NB 90% CIs as squared effect sizes are always positive!
-
-# Combined plot for manuscript
-
-```{r fig.height=6, fig.width=6}
-
-plot_1 <- p1 + p2 + plot_layout(ncol = 1)
-plot_1
-
-write_rds(plot_1, "models/plot_1.rds")
-
-```
 
 # Recommendations
 

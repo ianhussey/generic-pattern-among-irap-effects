@@ -1,5 +1,4 @@
 
 *.DS_Store
 *.Rhistory
-analyses/models/boot_fits.RData
-analyses/models/boot_fits.RData
+old/
