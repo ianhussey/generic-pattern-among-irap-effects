@@ -60,6 +60,9 @@ set.seed(42)
 # n bootstrap iterations
 n_boots <- 2000
 
+dir.create("models")
+dir.create("plots")
+
 ```
 
 # Data
@@ -219,6 +222,13 @@ plot_domains <-
                      ymin = D_ci_lower,
                      ymax = D_ci_upper), 
                  position = position_dodge(width = .25)) +
+  geom_line(data = data_D_scores_summary, 
+            aes(x = trial_type, 
+                y = D_mean, 
+                colour = Domain, 
+                group = Domain),
+            position = position_dodge(width = .25), 
+            alpha = 0.6) +
   geom_linerange(data = data_generic_pattern, 
                  aes(x = trial_type, 
                      y = D_mean, 
@@ -227,13 +237,6 @@ plot_domains <-
                      ymax = D_ci_upper),
                  size = 1,
                  position = position_dodge(width = .25)) +
-  geom_line(data = data_D_scores_summary, 
-            aes(x = trial_type, 
-                y = D_mean, 
-                colour = Domain, 
-                group = Domain),
-            position = position_dodge(width = .25), 
-            alpha = 0.6) +
   geom_line(data = data_generic_pattern, 
             aes(x = trial_type, y = D_mean, group = dummy), 
             size = 1,
@@ -550,18 +553,19 @@ Valid and invalid inferences using a hypothetical data for a commonly employed d
 ```{r fig.height=3, fig.width=6}
 
 # data
-data <- data.frame(Group = c("Intervention","Control","Intervention","Control",
-                             "Intervention","Control","Intervention","Control"),
-                   D = c(0.4, 0.3, 0.16, 0.13, -0.21, -0.15, -0.13, 0.15),
-                   trial_type = c("White people\npositive",
-                                  "White people\npositive",
-                                  "White people\nnegative",
-                                  "White people\nnegative",
-                                  "Black people\npositive",
-                                  "Black people\npositive",
-                                  "Black people\nnegative",
-                                  "Black people\nnegative"),
-                   SE = c(0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05)) %>%
+data_recommendations <- 
+  data.frame(Group = c("Intervention","Control","Intervention","Control",
+                       "Intervention","Control","Intervention","Control"),
+             D = c(0.2, 0.15, 0.08, 0.065, -0.105, -0.075, -0.065, 0.075),
+             trial_type = c("White people\npositive",
+                            "White people\npositive",
+                            "White people\nnegative",
+                            "White people\nnegative",
+                            "Black people\npositive",
+                            "Black people\npositive",
+                            "Black people\nnegative",
+                            "Black people\nnegative"),
+             SE = c(0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025)) %>%
   dplyr::mutate(trial_type = forcats::fct_relevel(as.factor(trial_type), 
                                                   "White people\npositive",
                                                   "White people\nnegative",
@@ -570,40 +574,40 @@ data <- data.frame(Group = c("Intervention","Control","Intervention","Control",
 
 # plot recommendations
 plot_recommendations <-
-  ggplot(data, aes(x = trial_type, y = D, colour = Group)) +
+  ggplot(data_recommendations, aes(x = trial_type, y = D, colour = Group)) +
   geom_linerange(aes(ymax = D + (1.96*SE),
                      ymin = D + (-1.96*SE)),
-                 position = position_dodge(width = .3)) +
+                 position = position_dodge(width = .1)) +
   geom_point(aes(shape = Group),
              size = 2.5,
-             position = position_dodge(width = .3)) +
+             position = position_dodge(width = .1)) +
   geom_line(aes(group = Group),
-            position = position_dodge(width = .3)) +
+            position = position_dodge(width = .1)) +
   geom_hline(yintercept = c(0), linetype = "dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_classic() + 
-  geom_line(data = data.frame(x = c(1, 1), y = c(0.02, 0.28)),
+  theme_minimal() + 
+  geom_line(data = data.frame(x = c(1, 1), y = c(0.01, 0.14)),
+            aes(x = x, y = y), 
+            colour = "black",
+            linetype = "dashed",
+            arrow = arrow(length = unit(0.10,"cm"), 
+                          ends="both", 
+                          type = "closed")) +
+  annotate("label", x = 1, y = 0.075, label = "(a) Invalid") +
+  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.055, 0.085)),
             aes(x = x, y = y), 
             colour = "black",
             linetype = "dashed",
             arrow = arrow(length = unit(0.20,"cm"), 
                           ends="both", 
                           type = "closed")) +
-  annotate("label", x = 1, y = 0.15, label = "(a) Invalid") +
-  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.11, 0.17)),
+  annotate("label", x = 3.5, y = 0.05, label = "(b) Invalid") +
+  geom_line(data = data.frame(x = c(4, 4), y = c(-0.0551, 0.065)),
             aes(x = x, y = y), 
             colour = "black",
             linetype = "dashed",
-            arrow = arrow(length = unit(0.20,"cm"), 
-                          ends="both", 
-                          type = "closed")) +
-  annotate("label", x = 3.5, y = 0.10, label = "(b) Invalid") +
-  geom_line(data = data.frame(x = c(4, 4), y = c(-0.111, 0.13)),
-            aes(x = x, y = y), 
-            colour = "black",
-            linetype = "dashed",
-            arrow = arrow(length = unit(0.20,"cm"), 
+            arrow = arrow(length = unit(0.10,"cm"), 
                           ends="both", 
                           type = "closed")) +
   annotate("label", x = 4, y = 0, label = "(c) Valid") +
