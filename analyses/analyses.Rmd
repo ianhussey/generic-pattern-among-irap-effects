@@ -568,8 +568,8 @@ data <- data.frame(Group = c("Intervention","Control","Intervention","Control",
                                                   "Black people\npositive",
                                                   "Black people\nnegative"))
 
-# plot
-plot_2 <-
+# plot recommendations
+plot_recommendations <-
   ggplot(data, aes(x = trial_type, y = D, colour = Group)) +
   geom_linerange(aes(ymax = D + (1.96*SE),
                      ymin = D + (-1.96*SE)),
@@ -609,9 +609,9 @@ plot_2 <-
   annotate("label", x = 4, y = 0, label = "(c) Valid") +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
-plot_2
+plot_recommendations
 
-write_rds(plot_2, "models/plot_2.rds")
+write_rds(plot_recommendations, "models/plot_recommendations.rds")
 
 ```
 
