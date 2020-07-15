@@ -100,7 +100,7 @@ data_long_known_stimuli <- data_long %>%
   filter(Domain != "Non-words") 
 
 data_long_unknown_stimuli <- data_long %>%
-  mutate(Stimuli = as.factor(ifelse(Domain == "Non-words", "Non-words", "Known words")))
+  filter(Domain == "Non-words") 
 
 ```
 
@@ -163,10 +163,10 @@ data_generic_pattern <-
                             "Category 1\nnegative",
                             "Category 2\npositive",
                             "Category 2\nnegative"),
-             D_mean     = c(0.112, 0.112-0.065, 0.112-0.174, 0.112-0.103),
-             D_ci_lower = c(0.098, 0.112-0.078, 0.112-0.187, 0.112-0.116),
-             D_ci_upper = c(0.126, 0.112-0.053, 0.112-0.162, 0.112-0.091),
-             dummy = c("dummy", "dummy", "dummy", "dummy"))
+             D_mean     = c(0.112, 0.047, -0.062, 0.009),
+             D_ci_lower = c(0.098, 0.034, -0.075, -0.004),
+             D_ci_upper = c(0.126, 0.059, -0.050, 0.021),
+             Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
 
 plot_generic_pattern <-
   data_generic_pattern %>%
@@ -232,13 +232,13 @@ plot_domains <-
   geom_linerange(data = data_generic_pattern, 
                  aes(x = trial_type, 
                      y = D_mean, 
-                     group = dummy,
+                     group = Type,
                      ymin = D_ci_lower,
                      ymax = D_ci_upper),
                  size = 1,
                  position = position_dodge(width = .25)) +
   geom_line(data = data_generic_pattern, 
-            aes(x = trial_type, y = D_mean, group = dummy), 
+            aes(x = trial_type, y = D_mean, group = Type), 
             size = 1,
             position = position_dodge(width = .25)) +
   geom_hline(yintercept = c(0), linetype = "dotted") +
@@ -423,20 +423,28 @@ NB 90% CIs as squared effect sizes are always positive!
 ```{r, fig.height=3, fig.width=5.5}
 
 data_means <- data_long_unknown_stimuli %>%
-  group_by(Stimuli, trial_type) %>%
-  dplyr::summarise(mean_D = mean(D),
-                   se_D = std.error(D)) %>%
-  round_df(2)
+  group_by(trial_type) %>%
+  dplyr::summarise(D_mean = mean(D),
+                   D_se = std.error(D)) %>%
+  mutate(D_ci_lower = D_mean - D_se*1.96,
+         D_ci_upper = D_mean + D_se*1.96,
+         Type = "Non-words") %>%
+  bind_rows(data_generic_pattern) %>%
+  mutate(trial_type = fct_relevel(trial_type, 
+                                  "Category 1\npositive",
+                                  "Category 1\nnegative",
+                                  "Category 2\npositive",
+                                  "Category 2\nnegative"))
 
 plot_stimuli <-
-  ggplot(data_means, aes(x = trial_type, y = mean_D, colour = Stimuli)) +
-  geom_linerange(aes(ymax = mean_D + (1.96*se_D),
-                     ymin = mean_D + (-1.96*se_D)),
+  ggplot(data_means, aes(x = trial_type, y = D_mean, colour = Type)) +
+  geom_linerange(aes(ymax = D_ci_lower,
+                     ymin = D_ci_upper),
                  position = position_dodge(width = .1)) +
-  geom_point(aes(shape = Stimuli),
+  geom_point(aes(shape = Type),
              size = 2.5,
              position = position_dodge(width = .1)) +
-  geom_line(aes(group = Stimuli),
+  geom_line(aes(group = Type),
             position = position_dodge(width = .1)) +
   geom_hline(yintercept=c(0), linetype="dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
@@ -449,102 +457,6 @@ plot_stimuli
 write_rds(plot_stimuli, "models/plot_stimuli.rds")
 
 ```
-
-### Effect sizes
-
-Comparison of frequentist effect sizes: eta squared, partial eta squared, and generalized eta squared.
-
-Bootstrapping via case removal and percentile method with 2000 replications.
-
-```{r}
-
-if (file.exists("models/boot_fits_stimuli.rds")) {
-  
-  boot_fits_stimuli <- read_rds("models/boot_fits_stimuli.rds")
-  
-} else {
-  
-  # create bootstraps using out of bag method. makes a df with values that are collapsed dfs.
-  boots_2 <- data_long_unknown_stimuli %>%
-    # reshape so that participants are sampled between bootstraps
-    select(unique_id, Stimuli, trial_type, D) %>%
-    spread(trial_type, D) %>%
-    rename(tt1 = `Category 1\npositive`,
-           tt2 = `Category 1\nnegative`,
-           tt3 = `Category 2\npositive`,
-           tt4 = `Category 2\nnegative`) %>%
-    # create bootstraps
-    bootstraps(times = n_boots)
-  
-  # analysis workflow to be bootstrapped
-  helper_function_2 <- function(split) {
-    
-    fit_anova_freq_2 <- analysis(split) %>%
-      # undo reshaping
-      gather(trial_type, D, c("tt1", "tt2", "tt3", "tt4")) %>%
-      # fit anova
-      ez::ezANOVA(data     = .,
-                  dv       = D,
-                  within   = trial_type,
-                  between  = Stimuli,
-                  wid      = unique_id,
-                  type     = 3,
-                  detailed = TRUE)
-    
-    # eta squared and generalized eta squared
-    results_etasq_2 <- 
-      fit_anova_freq_2$ANOVA %>%
-      mutate(etasq = SSn / sum(SSn)) %>%
-      select(Effect, etasq) %>%
-      round_df(2)
-    
-    # partial eta squared
-    results_petasq_and_getasq_2 <- 
-      anova_out_no_rounding(fit_anova_freq_2, 
-                            etasq = "partial", 
-                            print = FALSE)$ANOVA_RESULTS %>%
-      mutate(petasq = as.numeric(as.character(petasq)),
-             getasq = as.numeric(as.character(getasq))) %>%
-      select(Effect, petasq, getasq)
-    
-    # combine
-    results_proportion_of_variance_2 <- 
-      left_join(results_etasq_2, results_petasq_and_getasq_2, by = "Effect")
-    
-    return(results_proportion_of_variance_2)
-  }
-  
-  # apply to each bootstrap
-  boot_fits_stimuli <- boots_2 %>% 
-    mutate(fit = furrr::future_map(splits, helper_function_2)) %>%
-    unnest(fit) %>%
-    select(-splits)
-  
-  write_rds(boot_fits_stimuli, "models/boot_fits_stimuli.rds")
-  
-}
-
-# find CIs using percentile method
-boot_estimates_stimuli <- boot_fits_stimuli %>%
-  group_by(Effect) %>%
-  dplyr::summarize(etasq_median    = quantile(etasq,  0.50),
-                   etasq_ci_lower  = quantile(etasq,  0.05),
-                   etasq_ci_upper  = quantile(etasq,  0.95),
-                   petasq_median   = quantile(petasq, 0.50),
-                   petasq_ci_lower = quantile(petasq, 0.05),
-                   petasq_ci_upper = quantile(petasq, 0.95),
-                   getasq_median   = quantile(getasq, 0.50),
-                   getasq_ci_lower = quantile(getasq, 0.05),
-                   getasq_ci_upper = quantile(getasq, 0.95)) %>%
-  round_df(3)
-
-boot_estimates_stimuli %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
-
-```
-
-NB 90% CIs as squared effect sizes are always positive!
 
 # Recommendations
 

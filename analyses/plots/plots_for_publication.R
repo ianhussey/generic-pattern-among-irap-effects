@@ -2,7 +2,7 @@
 library(tidyverse)
 library(patchwork)
 
-setwd("~/git/generic-pattern-among-irap-effects/analysis")
+setwd("~/git/generic-pattern-among-irap-effects/analyses")
 dir.create("plots")
 
 plot_domains <- read_rds("models/plot_domains.rds")
