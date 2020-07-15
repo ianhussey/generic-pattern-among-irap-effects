@@ -151,7 +151,7 @@ data_processed_outliers_removed %>%
 
 NB plotting uses hard coded values - must update if results were to change due to data processing changes etc!
 
-```{r, fig.height=3, fig.width=5.5}
+```{r}
 
 fit <- lmer(D ~ trial_type + (1 | Domain) + (1 | unique_id), 
             data = data_long_known_stimuli)

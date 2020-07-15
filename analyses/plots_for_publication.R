@@ -15,12 +15,23 @@ plot_generic_pattern <- read_rds("models/plot_generic_pattern.rds")
 
 pdf(NULL)
 dev.control(displaylist = "enable")
-plot_domains + plot_stimuli + plot_recommendations + plot_layout(ncol = 1)
+plot_domains + plot_stimuli + plot_layout(ncol = 1)
 p1 <- recordPlot()
 invisible(dev.off())
-pdf("plots/plot_combined.pdf",
+pdf("plots/plot_generic_pattern_1.pdf",
     width = 6, 
-    height = 11)
+    height = 7)
+p1
+dev.off()
+
+pdf(NULL)
+dev.control(displaylist = "enable")
+plot_recommendations + plot_layout(ncol = 1)
+p1 <- recordPlot()
+invisible(dev.off())
+pdf("plots/plot_recommendations.pdf",
+    width = 6, 
+    height = 3.5)
 p1
 dev.off()
 
@@ -42,7 +53,7 @@ dev.control(displaylist = "enable")
 plot_generic_pattern
 p3 <- recordPlot()
 invisible(dev.off())
-pdf("plots/plot_generic_pattern.pdf",
+pdf("plots/plot_generic_pattern_2.pdf",
     width = 5, 
     height = 3.5)
 p3
