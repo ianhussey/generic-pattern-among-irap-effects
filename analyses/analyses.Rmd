@@ -29,231 +29,228 @@ library(kableExtra)
 library(ez)
 library(schoRsch)
 library(plotrix)
-library(BayesFactor)
 library(rsample)
 library(broom)
 library(purrr)
+library(furrr)
 library(patchwork)
+library(lme4)
+library(sjPlot)
+
+# run furrr:::future_map in parallel
+plan(multiprocess)
 
 # function to round all numeric vars in a data frame
 round_df <- function(df, n_digits = 3) {
   df %>% mutate_if(is.numeric, round, digits = n_digits)
 }
 
+# load a tweaked version of schoRsch::anova_out that removes rounding of effect sizes, for use in bootstrapping
+source("anova_out_no_rounding.R")
+
 # table format in output
 options(knitr.table.format = "html") 
 
-# disable scientific notation
-options(scipen = 999) 
+# # disable scientific notation
+# options(scipen = 999) 
+
+# set seed
+set.seed(42)
+
+# n bootstrap iterations
+n_boots <- 2000
+
+dir.create("models")
+dir.create("plots")
 
 ```
+
+# Data
 
 ```{r}
 
-# exclusions ----------------------------------------------------------------------------
-
-
 # get data
-data <- 
-  read.csv("../data/processed/combined data.csv") %>%
-  mutate(gender = ifelse(as.character(gender) == "", NA, as.character(gender)))
+data_processed <- read_csv("../data/scored/data_scored.csv")
 
+# exclusions
+data_processed_outliers_removed <- data_processed %>%
+  filter(rt_outlier == FALSE) %>%
+  select(-D_overall)
 
-# exclusions ----------------------------------------------------------------------------
-
-
-# find outliers
-exclusions <- data %>%
-  group_by(domain) %>%
-  mutate(acc_outlier = ifelse(perc_acc < mean(perc_acc) - sd(perc_acc)*2.5, 1, 0),
-         rt_outlier = ifelse(mean_rt > mean(mean_rt) + sd(mean_rt)*2.5, 1, 0)) %>%
-  ungroup() %>%
-  mutate(exclude = ifelse(rt_outlier == 1, 1,
-                          ifelse(acc_outlier == 1, 1, 0))) %>%
-  unite(study, c("domain", "researcher"), remove = FALSE)
-
-# exclude outliers
-data_wide <- exclusions %>%
-  filter(exclude == 0) 
-
-# reshape to long format for anova
-data_long <- data_wide %>%
-  gather(trialtype, D_score, c(D_tt1, D_tt2, D_tt3, D_tt4)) %>%
-  dplyr::mutate(unique_id = as.factor(unique_id),
-                trialtype = ifelse(trialtype == "D_tt1", "Category 1\npositive", 
-                                   ifelse(trialtype == "D_tt2", "Category 1\nnegative", 
-                                          ifelse(trialtype == "D_tt3", "Category 2\npositive", 
-                                                 ifelse(trialtype == "D_tt4", "Category 2\nnegative", NA)))),
-                trialtype = forcats::fct_relevel(as.factor(trialtype), 
-                                                 "Category 1\npositive", 
-                                                 "Category 1\nnegative", 
-                                                 "Category 2\npositive", 
-                                                 "Category 2\nnegative"))
+# d scoring
+data_long <- data_processed_outliers_removed %>%
+  rename("Category 1\npositive" = D_tt1, 
+         "Category 1\nnegative" = D_tt2, 
+         "Category 2\npositive" = D_tt3, 
+         "Category 2\nnegative" = D_tt4,
+         Domain = domain) %>%
+  gather(trial_type, D, c("Category 1\npositive",
+                          "Category 1\nnegative",
+                          "Category 2\npositive",
+                          "Category 2\nnegative")) %>%
+  mutate(trial_type = fct_relevel(trial_type,
+                                  "Category 1\npositive",
+                                  "Category 1\nnegative",
+                                  "Category 2\npositive",
+                                  "Category 2\nnegative"),
+         Domain = as.factor(Domain),
+         unique_id = as.factor(unique_id))
 
 data_long_known_stimuli <- data_long %>%
-  filter(domain != "Non-words")
-
-# write_csv(data_long_known_stimuli, "data_long_known_stimuli.csv")
+  filter(Domain != "Non-words") 
 
 data_long_unknown_stimuli <- data_long %>%
-  mutate(stimuli = ifelse(domain == "Non-words", "Non-words", "Real words"),
-         stimuli = as.factor(stimuli))
-
-
-# excluded
-n_total <- exclusions %>% summarize(n = n()) %>% as.integer()
-n_excluded <- exclusions %>% filter(exclude == 1) %>% summarize(n = n()) %>% as.integer()
-perc_excluded <- round(n_excluded/n_total*100, 0)
-
-
-
-# sample descriptives ----------------------------------------------
-
-
-# analytic sample after exclusions
-summary_stats <- data_wide %>%
-  dplyr::summarise(age_mean = round(mean(age, na.rm = TRUE), 1), 
-                   age_sd = round(sd(age, na.rm = TRUE), 1), 
-                   rt_mean = round(mean(mean_rt), 0),
-                   rt_sd = round(sd(mean_rt), 0),
-                   perc_acc_mean = round(mean(perc_acc)*100, 1),
-                   perc_acc_sd = round(sd(perc_acc)*100, 1))
-
-
-gender_summary <- data_wide %>%
-  group_by(gender) %>%
-  dplyr::summarise(n = n())
+  filter(Domain == "Non-words") 
 
 ```
-
-Data from k = `r exclusions %>% distinct(study) %>% summarize(n = n()) %>% as.integer()` studies across k = `r exclusions %>% distinct(domain) %>% summarize(n = n()) %>% as.integer()` domains were selected for inclusion (some data originally published in Drake et al., 2010, Hussey, Daly, & Barnes-Holmes 2015). This included a total of N = `r n_total` participants.
 
 # Demographics
 
-The analytic sample after exclusions included `r gender_summary %>% filter(gender == "Female") %>% select(n) %>% as.integer()` women, `r gender_summary %>% filter(gender == "Male") %>% select(n) %>% as.integer()` women, and `r gender_summary %>% filter(gender == "Other") %>% select(n) %>% as.integer()` identified using a third gender category (*M* = `r summary_stats$age_mean`, *SD* = `r summary_stats$age_sd`). `r gender_summary %>% filter(is.na(gender)) %>% select(n) %>% as.integer()` had missing demographics data. Accuracy and latency performances on the IRAP were typical of previous studies (*M*~RT~ = `r summary_stats$rt_mean`, *SD* = `r summary_stats$rt_sd`; *M*~accuracy~ = `r summary_stats$perc_acc_mean`, *SD* = `r summary_stats$perc_acc_sd`).
-
-N participants by IRAP domain:
-
 ```{r}
 
-data_wide %>%
-  group_by(domain) %>%
-  dplyr::summarise(n = n()) %>% 
+# excluded
+data_processed %>% 
+  summarize(n_total = n()) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+data_processed %>% 
+  filter(rt_outlier == FALSE) %>% 
+  summarize(n_after_exclusions = n()) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# sample descriptives
+data_processed %>%
+  dplyr::summarise(age_mean = round(mean(age, na.rm = TRUE), 1),
+                   age_sd = round(sd(age, na.rm = TRUE), 1)) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+data_processed %>%
+  count(gender) %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
 ```
 
-# Results
+N participants by IRAP domain after exclusions
 
-## Comparing domains
+```{r}
+
+data_processed_outliers_removed %>%
+  count(domain) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+```
+
+# Analyses
+
+## Estimate generic pattern via meta analysis
+
+NB plotting uses hard coded values - must update if results were to change due to data processing changes etc!
+
+```{r}
+
+fit <- lmer(D ~ trial_type + (1 | Domain) + (1 | unique_id), 
+            data = data_long_known_stimuli)
+
+tab_model(fit, digits = 3)
+
+data_generic_pattern <- 
+  data.frame(trial_type = c("Category 1\npositive",
+                            "Category 1\nnegative",
+                            "Category 2\npositive",
+                            "Category 2\nnegative"),
+             D_mean     = c(0.112, 0.047, -0.062, 0.009),
+             D_ci_lower = c(0.098, 0.034, -0.075, -0.004),
+             D_ci_upper = c(0.126, 0.059, -0.050, 0.021),
+             Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
+
+plot_generic_pattern <-
+  data_generic_pattern %>%
+  separate(trial_type, into = c("Category", "Attribute"), sep = "\n") %>%
+  mutate(Attribute = recode(Attribute,
+                            "positive" = "Positive",
+                            "negative" = "Negative"),
+         Attribute = fct_relevel(Attribute, "Positive", "Negative"),
+         D_mean = ifelse(Category == "Category 2", D_mean*-1, D_mean),
+         D_ci_lower = ifelse(Category == "Category 2", D_ci_lower*-1, D_ci_lower),
+         D_ci_upper = ifelse(Category == "Category 2", D_ci_upper*-1, D_ci_upper)) %>%
+  ggplot(aes(Category, D_mean, color = Attribute)) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  geom_point() +
+  geom_line(aes(group = Attribute, 
+                linetype = Attribute,
+                color = Attribute)) +
+  geom_linerange(aes(ymin = D_ci_lower, 
+                     ymax = D_ci_upper, 
+                     group = Attribute, 
+                     color = Attribute)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7, direction = -1) +
+  ylab(expression(paste(italic("D"), " score"))) +
+  scale_linetype_manual(values = c("solid", "longdash"))+
+  theme_minimal()
+
+plot_generic_pattern
+
+write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
+
+```
+
+## Compare domains
 
 ### Plot
 
-```{r, fig.height=3, fig.width=5.5}
+```{r, fig.height=6, fig.width=10}
 
-data_summary <- data_long_known_stimuli %>%
-  group_by(domain, trialtype) %>%
-  dplyr::rename(Domain = domain) %>%
-  dplyr::summarise(mean_D = mean(D_score),
-                   se_D = std.error(D_score)) %>%
-  round_df(2)
+data_D_scores_summary <- data_long_known_stimuli %>%
+  group_by(Domain, trial_type) %>%
+  summarize(D_mean = mean(D, na.rm = TRUE),
+            D_ci_lower = D_mean - 1.96*std.error(D, na.rm = TRUE),
+            D_ci_upper = D_mean + 1.96*std.error(D, na.rm = TRUE)) %>%
+  ungroup() 
 
-p1 <-
-  ggplot(data_summary, aes(x = trialtype, y = mean_D, colour = Domain)) +
-  geom_linerange(aes(ymax = mean_D + (1.96*se_D),
-                     ymin = mean_D + (-1.96*se_D)),
-                 position = position_dodge(width = .5)) +
-  geom_point(aes(shape = Domain),
-             size = 2.5,
-             position = position_dodge(width = .5)) +
-  geom_line(aes(group = Domain),
-            position = position_dodge(width = .5)) +
-  geom_hline(yintercept=c(0), linetype="dotted") +
+plot_domains <- 
+  ggplot() +
+  geom_linerange(data = data_D_scores_summary, 
+                 aes(x = trial_type, 
+                     y = D_mean, 
+                     colour = Domain, 
+                     group = Domain,
+                     ymin = D_ci_lower,
+                     ymax = D_ci_upper), 
+                 position = position_dodge(width = .25)) +
+  geom_line(data = data_D_scores_summary, 
+            aes(x = trial_type, 
+                y = D_mean, 
+                colour = Domain, 
+                group = Domain),
+            position = position_dodge(width = .25), 
+            alpha = 0.6) +
+  geom_linerange(data = data_generic_pattern, 
+                 aes(x = trial_type, 
+                     y = D_mean, 
+                     group = Type,
+                     ymin = D_ci_lower,
+                     ymax = D_ci_upper),
+                 size = 1,
+                 position = position_dodge(width = .25)) +
+  geom_line(data = data_generic_pattern, 
+            aes(x = trial_type, y = D_mean, group = Type), 
+            size = 1,
+            position = position_dodge(width = .25)) +
+  geom_hline(yintercept = c(0), linetype = "dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_classic()
+  #theme(legend.position = "bottom") +
+  #theme_classic()
+  theme_minimal()
 
-p1
+plot_domains
 
-```
-
-### Descriptives
-
-For the generic pattern (i.e., collapsed across all known word domains)
-
-```{r}
-
-data_summary_generic_pattern <- data_long_known_stimuli %>%
-  group_by(trialtype) %>%
-  dplyr::summarise(mean_D = mean(D_score),
-                   se_D = std.error(D_score),
-                   sd_D = sd(D_score)) %>%
-  round_df(2)
-
-data_summary_generic_pattern %>% 
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
-
-```
-
-### Bayes Factors 
-
-These use the equivalent of frequentist type II sum of squares model comparisons for the main effects. 
-
-- BF for the evidence for domain is the BF(D_score ~ trial_type + domain + unique_id)/BF(D_score ~ trial_type + unique_id)
-- BF for the evidence for trial type is the BF(D_score ~ trial_type + domain + unique_id)/BF(D_score ~ domain + unique_id)
-
-And the equivalent of frequentist type III sum of squares model comparisons for the interaction effect.
-
-- BF for the evidence for trial type is the BF(D_score ~ trial_type + domain + trial_type:domain + unique_id)/BF(D_score ~ trial_type + domain + unique_id)
-
-```{r}
-
-
-if (file.exists("models/fit_bf_anova.RData")) {
-  
-  load("models/fit_bf_anova.RData")
-
-} else {
-
-  fit_bf_anova <-
-    anovaBF(formula = D_score ~ trialtype * domain + unique_id,
-            data = data_long_known_stimuli,
-            whichRandom = c("unique_id"),
-            multicore = TRUE)
-  
-  save(fit_bf_anova, file = "models/fit_bf_anova.RData")
-  
-}
-
-# BF inclusions (between multiple alternative models)
-bf_inclusion_domain      <- fit_bf_anova[3] / fit_bf_anova[2]
-bf_inclusion_trialtype   <- fit_bf_anova[3] / fit_bf_anova[1]
-bf_inclusion_interaction <- fit_bf_anova[4] / fit_bf_anova[3]
-
-```
-
-- Domain BF10 = `r round(exp(bf_inclusion_domain@bayesFactor$bf), 4)`
-- Trial type BF10 =  `r round(exp(bf_inclusion_trialtype@bayesFactor$bf), 2)`
-- Interaction effect BF10 = `r round(exp(bf_inclusion_interaction@bayesFactor$bf), 4)`
-
-### Frequentist 
-
-```{r}
-
-fit_anova_freq <- ez::ezANOVA(data     = data_long_known_stimuli,
-                              dv       = D_score,
-                              within   = trialtype,
-                              between  = domain,
-                              wid      = unique_id,
-                              type     = 3,
-                              detailed = TRUE)
-
-# results
-anova_out(fit_anova_freq, 
-          etasq = "partial", 
-          print = FALSE)$`--- FORMATTED RESULTS ------------------------------------` 
+write_rds(plot_domains, "models/plot_domains.rds")
 
 ```
 
@@ -261,39 +258,39 @@ anova_out(fit_anova_freq,
 
 Comparison of frequentist effect sizes: eta squared, partial eta squared, and generalized eta squared.
 
-Bootstrapping via case removal and percentile method with 1000 replications.
+Bootstrapping via case removal and percentile method with 2000 replications.
 
 ```{r}
 
-if (file.exists("models/boot_fits.RData")) {
+if (file.exists("models/boot_fits_domains.rds")) {
   
-  load("models/boot_fits.RData")
-
+  boot_fits_domains <- read_rds("models/boot_fits_domains.rds")
+  
 } else {
   
   # create bootstraps using out of bag method. makes a df with values that are collapsed dfs.
   boots <- data_long_known_stimuli %>%
     # reshape so that participants are sampled between bootstraps
-    select(unique_id, domain, trialtype, D_score) %>%
-    spread(trialtype, D_score) %>%
+    select(unique_id, Domain, trial_type, D) %>%
+    spread(trial_type, D) %>%
     rename(tt1 = `Category 1\npositive`,
            tt2 = `Category 1\nnegative`,
            tt3 = `Category 2\npositive`,
            tt4 = `Category 2\nnegative`) %>%
     # create bootstraps
-    bootstraps(times = 1000)
+    bootstraps(times = n_boots)
   
   # analysis workflow to be bootstrapped
   helper_function <- function(split) {
     
     fit_anova_freq <- analysis(split) %>%
       # undo reshaping
-      gather(trialtype, D_score, c("tt1", "tt2", "tt3", "tt4")) %>%
+      gather(trial_type, D, c("tt1", "tt2", "tt3", "tt4")) %>%
       # fit anova
       ez::ezANOVA(data     = .,
-                  dv       = D_score,
-                  within   = trialtype,
-                  between  = domain,
+                  dv       = D,
+                  within   = trial_type,
+                  between  = Domain,
                   wid      = unique_id,
                   type     = 3,
                   detailed = TRUE)
@@ -302,14 +299,14 @@ if (file.exists("models/boot_fits.RData")) {
     results_etasq <- 
       fit_anova_freq$ANOVA %>%
       mutate(etasq = SSn / sum(SSn)) %>%
-      select(Effect, etasq) %>%
-      round_df(2)
+      select(Effect, etasq) 
     
     # partial eta squared
     results_petasq_and_getasq <- 
-      anova_out(fit_anova_freq, 
-                etasq = "partial", 
-                print = FALSE)$`--- ANOVA RESULTS     ------------------------------------` %>%
+      anova_out_no_rounding(fit_anova_freq, 
+                            etasq = "partial", 
+                            sph.cor = "no",
+                            print = FALSE)$ANOVA_RESULTS %>%
       mutate(petasq = as.numeric(as.character(petasq)),
              getasq = as.numeric(as.character(getasq))) %>%
       select(Effect, petasq, getasq)
@@ -322,230 +319,142 @@ if (file.exists("models/boot_fits.RData")) {
   }
   
   # apply to each bootstrap
-  boot_fits <- boots %>% 
-    mutate(fit = map(splits, helper_function)) %>%
-    unnest(fit) 
+  boot_fits_domains <- boots %>% 
+    mutate(fit = furrr::future_map(splits, helper_function)) %>%
+    unnest(fit) %>%
+    select(-splits)
   
-  save(boot_fits, file = "models/boot_fits.RData")
-
+  write_rds(boot_fits_domains, "models/boot_fits_domains.rds")
+  
 }
 
-boot_estimates <- boot_fits %>%
-    # find CIs using percentile method
-    group_by(Effect) %>%
-    summarize(etasq_median    = quantile(etasq,  0.50),
-              etasq_ci_lower  = quantile(etasq,  0.05),
-              etasq_ci_upper  = quantile(etasq,  0.95),
-              petasq_median   = quantile(petasq, 0.50),
-              petasq_ci_lower = quantile(petasq, 0.05),
-              petasq_ci_upper = quantile(petasq, 0.95),
-              getasq_median   = quantile(getasq, 0.50),
-              getasq_ci_lower = quantile(getasq, 0.05),
-              getasq_ci_upper = quantile(getasq, 0.95))
+boot_fits_domains %>%
+  filter(Effect != "(Intercept)") %>%
+  gather(key, value, c(etasq, petasq, getasq)) %>%
+  ggplot(aes(value)) +
+  geom_density(adjust = 1) +
+  facet_wrap(~ Effect + key, scales = "free", ncol = 3)
 
-boot_estimates %>%
+```
+
+```{r}
+
+# find CIs using percentile method
+boot_estimates_domain <- boot_fits_domains %>%
+  group_by(Effect) %>%
+  dplyr::summarize(etasq_median    = quantile(etasq,  0.50),
+                   etasq_ci_lower  = quantile(etasq,  0.05),
+                   etasq_ci_upper  = quantile(etasq,  0.95),
+                   petasq_median   = quantile(petasq, 0.50),
+                   petasq_ci_lower = quantile(petasq, 0.05),
+                   petasq_ci_upper = quantile(petasq, 0.95),
+                   getasq_median   = quantile(getasq, 0.50),
+                   getasq_ci_lower = quantile(getasq, 0.05),
+                   getasq_ci_upper = quantile(getasq, 0.95)) %>%
+  round_df(3)
+
+boot_estimates_domain %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# plots
+data_for_plotting_domains <- boot_estimates_domain %>%
+  filter(Effect != "(Intercept)") %>%
+  mutate(Effect = recode(Effect,
+                         "trial_type" = "Trial type",
+                         "Domain" = "Domain",
+                         "Domain:trial_type" = "Interaction"),
+         Effect = fct_relevel(Effect, "Interaction", "Domain", "Trial type"),
+         color = ifelse(Effect == "Trial type", FALSE, TRUE))
+
+p1 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, etasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = etasq_ci_lower, ymax = etasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .8) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+p2 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, petasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = petasq_ci_lower, ymax = petasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .25) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta[p]^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+p3 <- 
+  ggplot(data_for_plotting_domains, aes(Effect, getasq_median, color = color)) +
+  geom_point() +
+  geom_linerange(aes(ymin = getasq_ci_lower, ymax = getasq_ci_upper)) +
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  coord_flip() +
+  ylim(0, .175) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab(bquote(eta[g]^2)) +
+  xlab("") +
+  theme(legend.position = "none")
+
+plot_effect_sizes <- p1 + p2 + p3 + plot_layout(ncol = 1)
+
+plot_effect_sizes
+
+write_rds(plot_effect_sizes, "models/plot_effect_sizes.rds")
 
 ```
 
 NB 90% CIs as squared effect sizes are always positive!
 
-## Comparing known and unknown words
+## Compare known and unknown words
 
 ### Plot
 
 ```{r, fig.height=3, fig.width=5.5}
 
-# plot 1
 data_means <- data_long_unknown_stimuli %>%
-  group_by(stimuli, trialtype) %>%
-  dplyr::rename(Stimuli = stimuli) %>%
-  dplyr::summarise(mean_D = mean(D_score),
-                   se_D = std.error(D_score)) %>%
-  round_df(2)
+  group_by(trial_type) %>%
+  dplyr::summarise(D_mean = mean(D),
+                   D_se = std.error(D)) %>%
+  mutate(D_ci_lower = D_mean - D_se*1.96,
+         D_ci_upper = D_mean + D_se*1.96,
+         Type = "Non-words") %>%
+  bind_rows(data_generic_pattern) %>%
+  mutate(trial_type = fct_relevel(trial_type, 
+                                  "Category 1\npositive",
+                                  "Category 1\nnegative",
+                                  "Category 2\npositive",
+                                  "Category 2\nnegative"))
 
-p2 <-
-  ggplot(data_means, aes(x = trialtype, y = mean_D, colour = Stimuli)) +
-  geom_linerange(aes(ymax = mean_D + (1.96*se_D),
-                    ymin = mean_D + (-1.96*se_D)),
-                position = position_dodge(width = .2)) +
-  geom_point(aes(shape = Stimuli),
+plot_stimuli <-
+  ggplot(data_means, aes(x = trial_type, y = D_mean, colour = Type)) +
+  geom_linerange(aes(ymax = D_ci_lower,
+                     ymin = D_ci_upper),
+                 position = position_dodge(width = .1)) +
+  geom_point(aes(shape = Type),
              size = 2.5,
-             position = position_dodge(width = .2)) +
-  geom_line(aes(group = Stimuli),
-            position = position_dodge(width = .2)) +
+             position = position_dodge(width = .1)) +
+  geom_line(aes(group = Type),
+            position = position_dodge(width = .1)) +
   geom_hline(yintercept=c(0), linetype="dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_classic() +
+  theme_minimal() +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
-p2
+plot_stimuli
 
-```
-
-### Bayes Factors 
-
-These use the equivalent of frequentist type II sum of squares model comparisons for the main effects. 
-
-- BF for the evidence for domain is the BF(D_score ~ trial_type + stimuli + unique_id)/BF(D_score ~ trial_type + unique_id)
-- BF for the evidence for trial type is the BF(D_score ~ trial_type + stimuli + unique_id)/BF(D_score ~ stimuli + unique_id)
-
-And the equivalent of frequentist type III sum of squares model comparisons for the interaction effect.
-
-- BF for the evidence for trial type is the BF(D_score ~ trial_type + stimuli + trial_type:stimuli + unique_id)/BF(D_score ~ trial_type + stimuli + unique_id)
-
-```{r}
-
-if (file.exists("models/fit_bf_anova_2.RData")) {
-  
-  load("models/fit_bf_anova_2.RData")
-  
-} else {
-  
-  fit_bf_anova_2 <-
-    anovaBF(formula = D_score ~ trialtype * stimuli + unique_id,
-            data = data_long_unknown_stimuli,
-            whichRandom = c("unique_id"),
-            multicore = TRUE)
-  
-  save(fit_bf_anova_2, file = "models/fit_bf_anova_2.RData")
-  
-}
-
-# BF inclusions (between multiple alternative models)
-bf_inclusion_stimuli     <- fit_bf_anova_2[3] / fit_bf_anova_2[1]
-bf_inclusion_trialtype   <- fit_bf_anova_2[3] / fit_bf_anova_2[2]
-bf_inclusion_interaction <- fit_bf_anova_2[4] / fit_bf_anova_2[3]
-
-```
-
-- Stimuli BF10 = `r round(exp(bf_inclusion_stimuli@bayesFactor$bf), 2)`
-- Trial type BF10 =  `r round(exp(bf_inclusion_trialtype@bayesFactor$bf), 2)`
-- Interaction effect BF10 = `r round(exp(bf_inclusion_interaction@bayesFactor$bf), 2)`
-
-### Frequentist 
-
-```{r}
-
-fit_anova_freq_2 <- ez::ezANOVA(data     = data_long_unknown_stimuli,
-                                dv       = D_score,
-                                within   = trialtype,
-                                between  = stimuli,
-                                wid      = unique_id,
-                                type     = 3,
-                                detailed = TRUE)
-
-# results
-anova_out(fit_anova_freq_2, 
-          etasq = "partial", 
-          print = FALSE)$`--- FORMATTED RESULTS ------------------------------------` 
-
-```
-
-### Effect sizes
-
-Comparison of frequentist effect sizes: eta squared, partial eta squared, and generalized eta squared.
-
-Bootstrapping via case removal and percentile method with 1000 replications.
-
-```{r}
-
-if (file.exists("models/boot_fits_2.RData")) {
-  
-  load("models/boot_fits_2.RData")
-
-} else {
-  
-  # create bootstraps using out of bag method. makes a df with values that are collapsed dfs.
-  boots_2 <- data_long_unknown_stimuli %>%
-    # reshape so that participants are sampled between bootstraps
-    select(unique_id, stimuli, trialtype, D_score) %>%
-    spread(trialtype, D_score) %>%
-    rename(tt1 = `Category 1\npositive`,
-           tt2 = `Category 1\nnegative`,
-           tt3 = `Category 2\npositive`,
-           tt4 = `Category 2\nnegative`) %>%
-    # create bootstraps
-    bootstraps(times = 1000)
-  
-  # analysis workflow to be bootstrapped
-  helper_function_2 <- function(split) {
-    
-    fit_anova_freq_2 <- analysis(split) %>%
-      # undo reshaping
-      gather(trialtype, D_score, c("tt1", "tt2", "tt3", "tt4")) %>%
-      # fit anova
-      ez::ezANOVA(data     = .,
-                  dv       = D_score,
-                  within   = trialtype,
-                  between  = stimuli,
-                  wid      = unique_id,
-                  type     = 3,
-                  detailed = TRUE)
-    
-    # eta squared and generalized eta squared
-    results_etasq_2 <- 
-      fit_anova_freq_2$ANOVA %>%
-      mutate(etasq = SSn / sum(SSn)) %>%
-      select(Effect, etasq) %>%
-      round_df(2)
-    
-    # partial eta squared
-    results_petasq_and_getasq_2 <- 
-      anova_out(fit_anova_freq_2, 
-                etasq = "partial", 
-                print = FALSE)$`--- ANOVA RESULTS     ------------------------------------` %>%
-      mutate(petasq = as.numeric(as.character(petasq)),
-             getasq = as.numeric(as.character(getasq))) %>%
-      select(Effect, petasq, getasq)
-    
-    # combine
-    results_proportion_of_variance_2 <- 
-      left_join(results_etasq_2, results_petasq_and_getasq_2, by = "Effect")
-    
-    return(results_proportion_of_variance_2)
-  }
-  
-  # apply to each bootstrap
-  boot_fits_2 <- boots_2 %>% 
-    mutate(fit = map(splits, helper_function_2)) %>%
-    unnest(fit) 
-  
-  save(boot_fits_2, file = "models/boot_fits_2.RData")
-
-}
-
-boot_estimates_2 <- boot_fits_2 %>%
-    # find CIs using percentile method
-    group_by(Effect) %>%
-    summarize(etasq_median    = quantile(etasq,  0.50),
-              etasq_ci_lower  = quantile(etasq,  0.05),
-              etasq_ci_upper  = quantile(etasq,  0.95),
-              petasq_median   = quantile(petasq, 0.50),
-              petasq_ci_lower = quantile(petasq, 0.05),
-              petasq_ci_upper = quantile(petasq, 0.95),
-              getasq_median   = quantile(getasq, 0.50),
-              getasq_ci_lower = quantile(getasq, 0.05),
-              getasq_ci_upper = quantile(getasq, 0.95))
-
-boot_estimates_2 %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
-
-```
-
-NB 90% CIs as squared effect sizes are always positive!
-
-# Combined plot for manuscript
-
-```{r fig.height=6, fig.width=6}
-
-plot_1 <- p1 + p2 + plot_layout(ncol = 1)
-plot_1
-
-write_rds(plot_1, "models/plot_1.rds")
+write_rds(plot_stimuli, "models/plot_stimuli.rds")
 
 ```
 
@@ -556,68 +465,69 @@ Valid and invalid inferences using a hypothetical data for a commonly employed d
 ```{r fig.height=3, fig.width=6}
 
 # data
-data <- data.frame(Group = c("Intervention","Control","Intervention","Control",
-                             "Intervention","Control","Intervention","Control"),
-                   D_score = c(0.4, 0.3, 0.16, 0.13, -0.21, -0.15, -0.13, 0.15),
-                   trial_type = c("White people\npositive",
-                                  "White people\npositive",
-                                  "White people\nnegative",
-                                  "White people\nnegative",
-                                  "Black people\npositive",
-                                  "Black people\npositive",
-                                  "Black people\nnegative",
-                                  "Black people\nnegative"),
-                   SE = c(0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05)) %>%
+data_recommendations <- 
+  data.frame(Group = c("Intervention","Control","Intervention","Control",
+                       "Intervention","Control","Intervention","Control"),
+             D = c(0.2, 0.15, 0.08, 0.065, -0.105, -0.075, -0.065, 0.075),
+             trial_type = c("White people\npositive",
+                            "White people\npositive",
+                            "White people\nnegative",
+                            "White people\nnegative",
+                            "Black people\npositive",
+                            "Black people\npositive",
+                            "Black people\nnegative",
+                            "Black people\nnegative"),
+             SE = c(0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025)) %>%
   dplyr::mutate(trial_type = forcats::fct_relevel(as.factor(trial_type), 
                                                   "White people\npositive",
                                                   "White people\nnegative",
                                                   "Black people\npositive",
                                                   "Black people\nnegative"))
 
-# plot
-plot_2 <-
-  ggplot(data, aes(x = trial_type, y = D_score, colour = Group)) +
-  geom_linerange(aes(ymax = D_score + (1.96*SE),
-                     ymin = D_score + (-1.96*SE)),
-                 position = position_dodge(width = .3)) +
+# plot recommendations
+plot_recommendations <-
+  ggplot(data_recommendations, aes(x = trial_type, y = D, colour = Group)) +
+  geom_linerange(aes(ymax = D + (1.96*SE),
+                     ymin = D + (-1.96*SE)),
+                 position = position_dodge(width = .1)) +
   geom_point(aes(shape = Group),
              size = 2.5,
-             position = position_dodge(width = .3)) +
+             position = position_dodge(width = .1)) +
   geom_line(aes(group = Group),
-            position = position_dodge(width = .3)) +
+            position = position_dodge(width = .1)) +
   geom_hline(yintercept = c(0), linetype = "dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_classic() + 
-  geom_line(data = data.frame(x = c(1, 1), y = c(0.02, 0.28)),
+  theme_minimal() + 
+  geom_line(data = data.frame(x = c(1, 1), y = c(0.01, 0.14)),
+            aes(x = x, y = y), 
+            colour = "black",
+            linetype = "dashed",
+            arrow = arrow(length = unit(0.10,"cm"), 
+                          ends="both", 
+                          type = "closed")) +
+  annotate("label", x = 1, y = 0.075, label = "(a) Invalid") +
+  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.055, 0.085)),
             aes(x = x, y = y), 
             colour = "black",
             linetype = "dashed",
             arrow = arrow(length = unit(0.20,"cm"), 
                           ends="both", 
                           type = "closed")) +
-  annotate("label", x = 1, y = 0.15, label = "(a) Invalid") +
-  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.11, 0.17)),
+  annotate("label", x = 3.5, y = 0.05, label = "(b) Invalid") +
+  geom_line(data = data.frame(x = c(4, 4), y = c(-0.0551, 0.065)),
             aes(x = x, y = y), 
             colour = "black",
             linetype = "dashed",
-            arrow = arrow(length = unit(0.20,"cm"), 
-                          ends="both", 
-                          type = "closed")) +
-  annotate("label", x = 3.5, y = 0.10, label = "(b) Invalid") +
-  geom_line(data = data.frame(x = c(4, 4), y = c(-0.111, 0.13)),
-            aes(x = x, y = y), 
-            colour = "black",
-            linetype = "dashed",
-            arrow = arrow(length = unit(0.20,"cm"), 
+            arrow = arrow(length = unit(0.10,"cm"), 
                           ends="both", 
                           type = "closed")) +
   annotate("label", x = 4, y = 0, label = "(c) Valid") +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
-plot_2
+plot_recommendations
 
-write_rds(plot_2, "models/plot_2.rds")
+write_rds(plot_recommendations, "models/plot_recommendations.rds")
 
 ```
 
