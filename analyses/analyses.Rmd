@@ -36,13 +36,14 @@ library(furrr)
 library(patchwork)
 library(lme4)
 library(sjPlot)
+library(janitor)
 
 # run furrr:::future_map in parallel
 plan(multiprocess)
 
 # function to round all numeric vars in a data frame
 round_df <- function(df, n_digits = 3) {
-  df %>% mutate_if(is.numeric, round, digits = n_digits)
+  df %>% mutate_if(is.numeric, janitor::round_half_up, digits = n_digits)
 }
 
 # load a tweaked version of schoRsch::anova_out that removes rounding of effect sizes, for use in bootstrapping
@@ -122,8 +123,8 @@ data_processed %>%
 
 # sample descriptives
 data_processed %>%
-  dplyr::summarise(age_mean = round(mean(age, na.rm = TRUE), 1),
-                   age_sd = round(sd(age, na.rm = TRUE), 1)) %>% 
+  dplyr::summarise(age_mean = janitor::round_half_up(mean(age, na.rm = TRUE), 1),
+                   age_sd = janitor::round_half_up(sd(age, na.rm = TRUE), 1)) %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
