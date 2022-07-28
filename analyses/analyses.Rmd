@@ -163,9 +163,9 @@ data_generic_pattern <-
                             "Category 1\nnegative",
                             "Category 2\npositive",
                             "Category 2\nnegative"),
-             D_mean     = c(0.112, 0.047, -0.062, 0.009),
-             D_ci_lower = c(0.098, 0.034, -0.075, -0.004),
-             D_ci_upper = c(0.126, 0.059, -0.050, 0.021),
+             D_mean     = c(+0.342, +0.138, -0.199, +0.019), # values calculated manually from lmer results table, ie intercept + level
+             D_ci_lower = c(+0.300, +0.062, -0.275, -0.058),
+             D_ci_upper = c(+0.383, +0.214, -0.123, +0.094),
              Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
 
 plot_generic_pattern <-
@@ -260,7 +260,7 @@ Comparison of frequentist effect sizes: eta squared, partial eta squared, and ge
 
 Bootstrapping via case removal and percentile method with 2000 replications.
 
-```{r}
+```{r fig.height=9, fig.width=9}
 
 if (file.exists("models/boot_fits_domains.rds")) {
   
@@ -386,7 +386,7 @@ p2 <-
   geom_linerange(aes(ymin = petasq_ci_lower, ymax = petasq_ci_upper)) +
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
-  ylim(0, .25) +
+  ylim(0, .3) +
   theme_minimal() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[p]^2)) +
@@ -399,7 +399,7 @@ p3 <-
   geom_linerange(aes(ymin = getasq_ci_lower, ymax = getasq_ci_upper)) +
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
-  ylim(0, .175) +
+  ylim(0, .2) +
   theme_minimal() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[g]^2)) +
