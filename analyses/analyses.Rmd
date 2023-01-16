@@ -24,10 +24,10 @@ knitr::opts_chunk$set(message = FALSE,
 
 library(tidyverse)
 library(schoRsch)
+library(emmeans)
 library(knitr)
 library(kableExtra)
 library(ez)
-library(schoRsch)
 library(plotrix)
 library(rsample)
 library(broom)
@@ -113,25 +113,25 @@ data_long_unknown_stimuli <- data_long %>%
 data_processed %>% 
   summarize(n_total = n()) %>% 
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
 
 data_processed %>% 
   filter(rt_outlier == FALSE) %>% 
   summarize(n_after_exclusions = n()) %>% 
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
 
 # sample descriptives
 data_processed %>%
   dplyr::summarise(age_mean = janitor::round_half_up(mean(age, na.rm = TRUE), 1),
                    age_sd = janitor::round_half_up(sd(age, na.rm = TRUE), 1)) %>% 
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
 
 data_processed %>%
   count(gender) %>% 
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
 
 ```
 
@@ -142,7 +142,7 @@ N participants by IRAP domain after exclusions
 data_processed_outliers_removed %>%
   count(domain) %>%
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
 
 ```
 
@@ -192,11 +192,17 @@ plot_generic_pattern <-
   scale_color_viridis_d(begin = 0.3, end = 0.7, direction = -1) +
   ylab(expression(paste(italic("D"), " score"))) +
   scale_linetype_manual(values = c("solid", "longdash"))+
-  theme_minimal()
+  theme_linedraw()
 
 plot_generic_pattern
 
-write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
+ggsave("plots/plot_generic_pattern_2.pdf",
+       plot = plot_generic_pattern,
+       width = 5,
+       height = 3.5,
+       units = "in")
+
+#write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
 
 ```
 
@@ -206,52 +212,57 @@ write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
 
 ```{r, fig.height=6, fig.width=10}
 
-data_D_scores_summary <- data_long_known_stimuli %>%
-  group_by(Domain, trial_type) %>%
-  summarize(D_mean = mean(D, na.rm = TRUE),
-            D_ci_lower = D_mean - 1.96*std.error(D, na.rm = TRUE),
-            D_ci_upper = D_mean + 1.96*std.error(D, na.rm = TRUE)) %>%
-  ungroup() 
+# fit model
+fit <- 
+  aov(D ~ trial_type * Domain + Error(unique_id / trial_type), 
+      data = data_long_known_stimuli,
+      contrasts = list(trial_type = "contr.sum",
+                       Domain = "contr.sum"))
+
+# extract marginal means
+data_emms <- summary(emmeans(fit, 1 ~ trial_type:Domain))
 
 plot_domains <- 
   ggplot() +
-  geom_linerange(data = data_D_scores_summary, 
+  geom_hline(yintercept = c(0), linetype = "dotted") +
+  geom_linerange(data = data_emms, 
                  aes(x = trial_type, 
-                     y = D_mean, 
-                     colour = Domain, 
-                     group = Domain,
-                     ymin = D_ci_lower,
-                     ymax = D_ci_upper), 
-                 position = position_dodge(width = .25)) +
-  geom_line(data = data_D_scores_summary, 
-            aes(x = trial_type, 
-                y = D_mean, 
-                colour = Domain, 
-                group = Domain),
-            position = position_dodge(width = .25), 
-            alpha = 0.6) +
-  geom_linerange(data = data_generic_pattern, 
-                 aes(x = trial_type, 
-                     y = D_mean, 
+                     ymax = lower.CL,
+                     ymin = upper.CL,
+                     colour = Domain),
+                 position = position_dodge(width = .4)) +
+  geom_point(
+    data = data_emms, aes(x = trial_type, y = emmean, colour = Domain),
+    #aes(shape = Domain),
+    size = 1.5,
+    position = position_dodge(width = .4)
+  ) +
+  geom_line(
+    data = data_emms, aes(x = trial_type, y = emmean, colour = Domain),
+    #aes(group = Domain),
+    position = position_dodge(width = .4)
+  ) +
+  geom_linerange(data = data_generic_pattern,
+                 aes(x = trial_type,
+                     y = D_mean,
                      group = Type,
                      ymin = D_ci_lower,
                      ymax = D_ci_upper),
-                 size = 1,
-                 position = position_dodge(width = .25)) +
-  geom_line(data = data_generic_pattern, 
-            aes(x = trial_type, y = D_mean, group = Type), 
-            size = 1,
-            position = position_dodge(width = .25)) +
-  geom_hline(yintercept = c(0), linetype = "dotted") +
+                 size = 1) +
+  geom_line(data = data_generic_pattern,
+            aes(x = trial_type, y = D_mean, group = Type),
+            size = 1) +
+  geom_point(data = data_generic_pattern, 
+             aes(x = trial_type, y = D_mean, group = Type), 
+             size = 3) +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  #theme(legend.position = "bottom") +
-  #theme_classic()
-  theme_minimal()
+  theme_linedraw() +
+  scale_color_viridis_d()
 
 plot_domains
 
-write_rds(plot_domains, "models/plot_domains.rds")
+#write_rds(plot_domains, "models/plot_domains.rds")
 
 ```
 
@@ -259,7 +270,9 @@ write_rds(plot_domains, "models/plot_domains.rds")
 
 Comparison of frequentist effect sizes: eta squared, partial eta squared, and generalized eta squared.
 
-Bootstrapping via case removal and percentile method with 2000 replications.
+#### Bootstrap effect size estimates
+
+via case removal and percentile method with 2000 replications.
 
 ```{r fig.height=9, fig.width=9}
 
@@ -329,12 +342,12 @@ if (file.exists("models/boot_fits_domains.rds")) {
   
 }
 
-boot_fits_domains %>%
-  filter(Effect != "(Intercept)") %>%
-  gather(key, value, c(etasq, petasq, getasq)) %>%
-  ggplot(aes(value)) +
-  geom_density(adjust = 1) +
-  facet_wrap(~ Effect + key, scales = "free", ncol = 3)
+# boot_fits_domains %>%
+#   filter(Effect != "(Intercept)") %>%
+#   gather(key, value, c(etasq, petasq, getasq)) %>%
+#   ggplot(aes(value)) +
+#   geom_density(adjust = 1) +
+#   facet_wrap(~ Effect + key, scales = "free", ncol = 3)
 
 ```
 
@@ -351,12 +364,84 @@ boot_estimates_domain <- boot_fits_domains %>%
                    petasq_ci_upper = quantile(petasq, 0.95),
                    getasq_median   = quantile(getasq, 0.50),
                    getasq_ci_lower = quantile(getasq, 0.05),
-                   getasq_ci_upper = quantile(getasq, 0.95)) %>%
-  round_df(3)
+                   getasq_ci_upper = quantile(getasq, 0.95),
+                   getasq_se       = sd(getasq)) 
 
 boot_estimates_domain %>%
+  round_df(3) %>%
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+  kable_classic(full_width = FALSE)
+
+```
+
+#### Hypothesis tests
+
+Effect size estimates, their 95% CIs and standard errors were estimated via bootstrapping. 
+
+A common way to assess whether for differences between two estimates is to assess for non overlap between their confidence intervals. However, it has been repeatedly pointed out that this is less than ideal: there are situations where confidence intervals overlap slightly and yet the difference in means is significant.
+
+Cornell Statistical Consulting Unit (2008) [Overlapping Confidence Intervals and Statistical
+Significance](https://cscu.cornell.edu/wp-content/uploads/73_ci.pdf) argue this clearly. From their whitepaper:
+
+The null hypothesis of zero mean difference is rejected when
+
+$|x_1 - x_2| > t \times \sqrt{SE_1^2 + SE_2^2}$
+
+The individual confidence intervals do not overlap when
+
+$|x_1 - x_2| > t \times (SE_1 + SE_2)$
+
+It can be shown that the following is always true:
+
+$\sqrt{SE_1^2 + SE_2^2} \le (SE_1 + SE_2)$
+
+This means that as $|x_1 - x_2|$ increases there will be a point at which there is a significant difference between the means, but where the confidence intervals still overlaps. I.e., non overlapping confidence intervals indicate differences, but partially overlapping intervals do not exclude that there being differences.
+
+As such, it is more appropriate and liberal to test for differences between pairs of estimates based on the CI of the difference scores rather than the non-overlap of intervals of the pair of estimates.
+
+After calculating estimates of difference scores and their SEs, these were then converted to z scores (ie *z* = estimate/SE), and z scores converted to p values via the *t*-distribution, i.e., "pnorm(z, lower.tail = FALSE)" (Lin J-T. Approximating the normal tail probability and its inverse for use on a pocket calculator. Appl Stat1989;38:69-70).
+
+```{r}
+
+# method from https://cscu.cornell.edu/wp-content/uploads/73_ci.pdf
+
+data_geta_wrangled <- boot_estimates_domain |>
+  filter(Effect != "(Intercept)") |>
+  select(Effect, getasq_median, getasq_se) |>
+  pivot_wider(names_from = "Effect", 
+              values_from = c("getasq_median", "getasq_se")) |>
+  janitor::clean_names() |>
+  select(trialtype_est = getasq_median_trial_type,
+         trialtype_se = getasq_se_trial_type,
+         domain_est = getasq_median_domain,
+         domain_se = getasq_se_domain,
+         interaction_est = getasq_median_domain_trial_type,
+         interaction_se = getasq_se_domain_trial_type,)
+
+data_geta_wrangled |>
+  mutate(trialtype_domain_est = trialtype_est - domain_est,
+         trialtype_interaction_est = trialtype_est - interaction_est,
+         
+         trialtype_domain_se = sqrt(trialtype_se^2 + domain_se^2),
+         trialtype_interaction_se = sqrt(trialtype_se^2 + interaction_se^2),
+         
+         trialtype_domain_z = trialtype_domain_est / trialtype_domain_se,
+         trialtype_interaction_z = trialtype_interaction_est / trialtype_interaction_se,
+         
+         trialtype_domain_p = pnorm(trialtype_domain_z, lower.tail = FALSE),
+         trialtype_interaction_p = pnorm(trialtype_interaction_z, lower.tail = FALSE)) |>
+  select(trialtype_domain_z,
+         trialtype_domain_p,
+         trialtype_interaction_z,
+         trialtype_interaction_p) |>
+  mutate(trialtype_domain_z = janitor::round_half_up(trialtype_domain_z, 1),
+         trialtype_interaction_z = janitor::round_half_up(trialtype_interaction_z, 1)) 
+
+```
+
+#### Plot
+
+```{r}
 
 # plots
 data_for_plotting_domains <- boot_estimates_domain %>%
@@ -375,7 +460,7 @@ p1 <-
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
   ylim(0, .8) +
-  theme_minimal() +
+  theme_linedraw() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta^2)) +
   xlab("") +
@@ -388,7 +473,7 @@ p2 <-
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
   ylim(0, .3) +
-  theme_minimal() +
+  theme_linedraw() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[p]^2)) +
   xlab("") +
@@ -401,7 +486,7 @@ p3 <-
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
   ylim(0, .2) +
-  theme_minimal() +
+  theme_linedraw() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[g]^2)) +
   xlab("") +
@@ -411,51 +496,96 @@ plot_effect_sizes <- p1 + p2 + p3 + plot_layout(ncol = 1)
 
 plot_effect_sizes
 
-write_rds(plot_effect_sizes, "models/plot_effect_sizes.rds")
+ggsave("plots/plot_effect_sizes.pdf",
+       plot = plot_effect_sizes,
+       width = 4,
+       height = 4.5,
+       units = "in")
+
+#write_rds(plot_effect_sizes, "models/plot_effect_sizes.rds")
 
 ```
 
 NB 90% CIs as squared effect sizes are always positive!
 
-## Compare known and unknown words
+## Compare known-word vs non-word IRAPs
 
 ### Plot
 
 ```{r, fig.height=3, fig.width=5.5}
 
-data_means <- data_long_unknown_stimuli %>%
-  group_by(trial_type) %>%
-  dplyr::summarise(D_mean = mean(D),
-                   D_se = std.error(D)) %>%
-  mutate(D_ci_lower = D_mean - D_se*1.96,
-         D_ci_upper = D_mean + D_se*1.96,
-         Type = "Non-words") %>%
-  bind_rows(data_generic_pattern) %>%
-  mutate(trial_type = fct_relevel(trial_type, 
-                                  "Category 1\npositive",
-                                  "Category 1\nnegative",
-                                  "Category 2\npositive",
-                                  "Category 2\nnegative"))
+# fit model
+fit_2 <- data_long |>
+  mutate(Domain = ifelse(Domain != "Non-words", "Generic pattern", "Non-words")) %>%
+  aov(D ~ trial_type * Domain + Error(unique_id / trial_type), 
+      data = .,
+      contrasts = list(trial_type = "contr.sum",
+                       Domain = "contr.sum"))
 
-plot_stimuli <-
-  ggplot(data_means, aes(x = trial_type, y = D_mean, colour = Type)) +
-  geom_linerange(aes(ymax = D_ci_lower,
-                     ymin = D_ci_upper),
-                 position = position_dodge(width = .1)) +
-  geom_point(aes(shape = Type),
-             size = 2.5,
-             position = position_dodge(width = .1)) +
-  geom_line(aes(group = Type),
-            position = position_dodge(width = .1)) +
-  geom_hline(yintercept=c(0), linetype="dotted") +
+# extract marginal means
+data_emms_2 <- summary(emmeans(fit_2, 1 ~ trial_type:Domain))
+
+plot_stimuli <- 
+  ggplot() +
+  geom_hline(yintercept = c(0), linetype = "dotted") +
+  geom_linerange(data = data_emms_2, 
+                 aes(x = trial_type, 
+                     ymax = lower.CL,
+                     ymin = upper.CL,
+                     colour = Domain),
+                 position = position_dodge(width = .2)) +
+  geom_line(
+    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain, group = Domain),
+    position = position_dodge(width = .2)
+  ) +
+  geom_point(
+    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain, shape = Domain),
+    size = 2.5,
+    position = position_dodge(width = .2)
+  ) +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_minimal() +
+  theme_linedraw() +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
 plot_stimuli
 
-write_rds(plot_stimuli, "models/plot_stimuli.rds")
+# combine plots
+plot_generic_pattern_1 <- plot_domains + plot_stimuli + plot_layout(ncol = 1)
+
+ggsave("plots/plot_generic_pattern_1.pdf",
+       plot = plot_generic_pattern_1,
+       width = 7,
+       height = 8,
+       units = "in")
+
+```
+
+### Hypothesis test
+
+Assess presence of IRAP effects on non-words IRAP 
+
+```{r}
+
+data_long_unknown_stimuli |>
+  pivot_wider(names_from = trial_type, 
+              values_from = D) |>
+  janitor::clean_names() |>
+  rowwise() |>
+  mutate(positive = mean(c(category_1_positive, category_2_positive*-1)),
+         negative = mean(c(category_1_negative, category_2_negative*-1))) |>
+  ungroup() |>
+  select(-category_1_positive, -category_2_positive, -category_1_negative, -category_2_negative) |>
+  pivot_longer(cols = c(positive, negative),
+               names_to = "trial_type",
+               values_to = "D") |>
+  group_by(trial_type) %>%
+  do(tidy(t.test(.$D))) |>
+  select(trial_type, mean = estimate, t = statistic, df = parameter, p = p.value) |>
+  mutate(mean = janitor::round_half_up(mean, digits = 2),
+         t = janitor::round_half_up(t, digits = 2)) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
 
 ```
 
@@ -499,36 +629,42 @@ plot_recommendations <-
   geom_hline(yintercept = c(0), linetype = "dotted") +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
-  theme_minimal() + 
+  theme_linedraw() + 
   geom_line(data = data.frame(x = c(1, 1), y = c(0.01, 0.14)),
             aes(x = x, y = y), 
             colour = "black",
-            linetype = "dashed",
-            arrow = arrow(length = unit(0.10,"cm"), 
-                          ends="both", 
+            #linetype = "dashed",
+            arrow = arrow(length = unit(0.20, "cm"), 
+                          ends = "both", 
                           type = "closed")) +
   annotate("label", x = 1, y = 0.075, label = "(a) Invalid") +
   geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.055, 0.085)),
             aes(x = x, y = y), 
             colour = "black",
-            linetype = "dashed",
-            arrow = arrow(length = unit(0.20,"cm"), 
-                          ends="both", 
+            #linetype = "dashed",
+            arrow = arrow(length = unit(0.20, "cm"), 
+                          ends = "both", 
                           type = "closed")) +
   annotate("label", x = 3.5, y = 0.05, label = "(b) Invalid") +
   geom_line(data = data.frame(x = c(4, 4), y = c(-0.0551, 0.065)),
             aes(x = x, y = y), 
             colour = "black",
-            linetype = "dashed",
-            arrow = arrow(length = unit(0.10,"cm"), 
-                          ends="both", 
+            #linetype = "dashed",
+            arrow = arrow(length = unit(0.20, "cm"), 
+                          ends = "both", 
                           type = "closed")) +
   annotate("label", x = 4, y = 0, label = "(c) Valid") +
   scale_color_viridis_d(begin = 0.3, end = 0.7)
 
 plot_recommendations
 
-write_rds(plot_recommendations, "models/plot_recommendations.rds")
+ggsave("plots/plot_recommendations.pdf",
+       plot = plot_recommendations,
+       width = 6,
+       height = 3.5,
+       units = "in")
+
+#write_rds(plot_recommendations, "models/plot_recommendations.rds")
 
 ```
 
