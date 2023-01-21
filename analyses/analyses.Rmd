@@ -20,8 +20,7 @@ knitr::opts_chunk$set(message = FALSE,
 
 ```{r}
 
-# dependencies ----------------------------------------------------------------------------
-
+# dependencies
 library(tidyverse)
 library(schoRsch)
 library(emmeans)
@@ -39,7 +38,7 @@ library(sjPlot)
 library(janitor)
 
 # run furrr:::future_map in parallel
-plan(multiprocess)
+plan(multisession)
 
 # function to round all numeric vars in a data frame
 round_df <- function(df, n_digits = 3) {
@@ -76,11 +75,11 @@ dir.create("../data/summary/")
 ```{r}
 
 # get data
-data_processed <- read_csv("../data/scored/data_scored.csv")
+data_processed <- read_csv("../data/scored/data_scored_trimmed.csv")
 
 # exclusions
 data_processed_outliers_removed <- data_processed %>%
-  filter(rt_outlier == FALSE) %>%
+  filter(met_performance_criteria == TRUE) %>%
   select(-D_overall)
 
 # d scoring
@@ -123,7 +122,7 @@ data_processed %>%
   kable_classic(full_width = FALSE)
 
 data_processed %>% 
-  filter(rt_outlier == FALSE) %>% 
+  filter(met_performance_criteria == TRUE) %>% 
   summarize(n_after_exclusions = n()) %>% 
   kable() %>%
   kable_classic(full_width = FALSE)
@@ -673,7 +672,8 @@ data_long_unknown_stimuli |>
   mutate(positive = mean(c(category_1_positive, category_2_positive*-1)),
          negative = mean(c(category_1_negative, category_2_negative*-1))) |>
   ungroup() |>
-  select(-category_1_positive, -category_2_positive, -category_1_negative, -category_2_negative) |>
+  select(-category_1_positive, -category_2_positive, 
+         -category_1_negative, -category_2_negative) |>
   pivot_longer(cols = c(positive, negative),
                names_to = "trial_type",
                values_to = "D") |>

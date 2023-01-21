@@ -1,0 +1,1 @@
+data_scored from meta-analysis of IRAP's reliability https://psyarxiv.com/ge3k7, https://github.com/ianhussey/irap-reliability-meta-analysis
