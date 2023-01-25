@@ -79,7 +79,7 @@ data_processed <- read_csv("../data/scored/data_scored_trimmed.csv")
 
 # exclusions
 data_processed_outliers_removed <- data_processed %>%
-  filter(met_performance_criteria == TRUE) %>%
+  filter(met_performance_criteria_typical == TRUE) %>%
   select(-D_overall)
 
 # d scoring
@@ -122,7 +122,7 @@ data_processed %>%
   kable_classic(full_width = FALSE)
 
 data_processed %>% 
-  filter(met_performance_criteria == TRUE) %>% 
+  filter(met_performance_criteria_typical == TRUE) %>% 
   summarize(n_after_exclusions = n()) %>% 
   kable() %>%
   kable_classic(full_width = FALSE)

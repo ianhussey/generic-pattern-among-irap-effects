@@ -11,7 +11,7 @@
 
 <meta name="author" content="Ian Hussey" />
 
-<meta name="date" content="2023-01-21" />
+<meta name="date" content="2023-01-25" />
 
 <title>Subset evaluative IRAPs</title>
 
@@ -1669,7 +1669,7 @@ border-radius: 0px;
 
 <h1 class="title toc-ignore">Subset evaluative IRAPs</h1>
 <h4 class="author">Ian Hussey</h4>
-<h4 class="date">21 January 2023</h4>
+<h4 class="date">25 January 2023</h4>
 
 </div>
 
@@ -1703,8 +1703,10 @@ evaluative attribute stimuli, TRUE/FALSE response options.</p>
 <span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>                       <span class="st">&quot;Stigma - Schizophrenia&quot;</span>) <span class="sc">&amp;</span> </span>
 <span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>           timepoint <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span></span>
 <span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">domain =</span> <span class="fu">ifelse</span>(domain <span class="sc">==</span> <span class="st">&quot;Gender (2)&quot;</span>, <span class="st">&quot;Gender&quot;</span>, domain)) <span class="sc">%&gt;%</span></span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>A_overall, <span class="sc">-</span>A_tt1, <span class="sc">-</span>A_tt2, <span class="sc">-</span>A_tt3, <span class="sc">-</span>A_tt4)</span></code></pre></div>
-<p>NB death 3 recoded to death 2 for plotting</p>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>PI_overall, <span class="sc">-</span>PI_tt1, <span class="sc">-</span>PI_tt2, <span class="sc">-</span>PI_tt3, <span class="sc">-</span>PI_tt4)</span></code></pre></div>
+<p>NB Gender 2 recoded to Gender for plotting. Other death IRAPs
+excluded as they employed non-valenced or similarly valenced
+attributes.</p>
 </div>
 <div id="write-to-disk" class="section level1">
 <h1>Write to disk</h1>
