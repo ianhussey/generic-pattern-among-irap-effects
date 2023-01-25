@@ -40,7 +40,6 @@ data_scored_trimmed <- read.csv("data_scored.csv") %>%
                        "Death (2)", 
                        "Death (3)",
                        "Friend-Enemy", 
-                       "Gender (2)", 
                        "Lincoln-Hitler", 
                        "Non-words",
                        "Race (1)", 
@@ -51,12 +50,11 @@ data_scored_trimmed <- read.csv("data_scored.csv") %>%
                        "Stigma - PTSD", 
                        "Stigma - Schizophrenia") & 
            timepoint == 1) %>%
-  mutate(domain = ifelse(domain == "Gender (2)", "Gender", domain)) %>%
   select(-PI_overall, -PI_tt1, -PI_tt2, -PI_tt3, -PI_tt4)
 
 ```
 
-NB Gender 2 recoded to Gender for plotting. Other death IRAPs excluded as they employed non-valenced or similarly valenced attributes. 
+Other death IRAPs excluded as they employed non-valenced or similarly valenced attributes. 
 
 # Write to disk
 
