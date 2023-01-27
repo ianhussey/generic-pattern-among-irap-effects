@@ -290,8 +290,8 @@ plot_generic_pattern
 
 ggsave("plots/plot_generic_pattern_2.pdf",
        plot = plot_generic_pattern,
-       width = 5,
-       height = 3.5,
+       width = 7,
+       height = 4,
        units = "in")
 
 #write_rds(plot_generic_pattern, "models/plot_generic_pattern.rds")
@@ -669,7 +669,7 @@ ggsave("plots/plot_effect_sizes.pdf",
 
 ### Plot
 
-```{r, fig.height=3, fig.width=5.5}
+```{r, fig.height=3.5, fig.width=5.5}
 
 # fit model
 fit_3 <- data_long |>
@@ -751,13 +751,13 @@ data_long_unknown_stimuli |>
 
 Valid and invalid inferences using a hypothetical data for a commonly employed design within IRAP research (i.e., comparisons between two known groups).  
 
-```{r fig.height=3, fig.width=6}
+```{r fig.height=4, fig.width=6}
 
 # data
 data_recommendations <- 
   data.frame(Group = c("Intervention","Control","Intervention","Control",
                        "Intervention","Control","Intervention","Control"),
-             D = c(0.2, 0.15, 0.08, 0.065, -0.105, -0.075, -0.065, 0.075),
+             D = c(0.2*2, 0.15*2, 0.08*2, 0.065*2, -0.105*2, -0.075*2, -0.065*2, 0.075*2),
              trial_type = c("White people\npositive",
                             "White people\npositive",
                             "White people\nnegative",
@@ -788,23 +788,23 @@ plot_recommendations <-
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
   theme_linedraw() + 
-  geom_line(data = data.frame(x = c(1, 1), y = c(0.01, 0.14)),
+  geom_line(data = data.frame(x = c(1, 1), y = c(0.01*2, 0.14*2)),
             aes(x = x, y = y), 
             colour = "black",
             #linetype = "dashed",
             arrow = arrow(length = unit(0.20, "cm"), 
                           ends = "both", 
                           type = "closed")) +
-  annotate("label", x = 1, y = 0.075, label = "(a) Invalid") +
-  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.055, 0.085)),
+  annotate("label", x = 1, y = 0.075*2, label = "(a) Invalid") +
+  geom_line(data = data.frame(x = c(2.96, 3.91), y = c(-0.055*2, 0.085*2)),
             aes(x = x, y = y), 
             colour = "black",
             #linetype = "dashed",
             arrow = arrow(length = unit(0.20, "cm"), 
                           ends = "both", 
                           type = "closed")) +
-  annotate("label", x = 3.5, y = 0.05, label = "(b) Invalid") +
-  geom_line(data = data.frame(x = c(4, 4), y = c(-0.0551, 0.065)),
+  annotate("label", x = 3.5, y = 0.05*2, label = "(b) Invalid") +
+  geom_line(data = data.frame(x = c(4, 4), y = c(-0.0551*2, 0.065*2)),
             aes(x = x, y = y), 
             colour = "black",
             #linetype = "dashed",
@@ -812,19 +812,22 @@ plot_recommendations <-
                           ends = "both", 
                           type = "closed")) +
   annotate("label", x = 4, y = 0, label = "(c) Valid") +
-  scale_color_viridis_d(begin = 0.3, end = 0.7)
+  scale_color_viridis_d(begin = 0.3, end = 0.7) +
+  scale_y_continuous(breaks = scales::breaks_width(.20))
 
 plot_recommendations
 
 ggsave("plots/plot_recommendations.pdf",
        plot = plot_recommendations,
-       width = 6,
-       height = 3.5,
+       width = 7,
+       height = 4,
        units = "in")
 
 #write_rds(plot_recommendations, "models/plot_recommendations.rds")
 
 ```
+
+
 
 
 
