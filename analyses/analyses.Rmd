@@ -62,7 +62,7 @@ options(knitr.table.format = "html")
 set.seed(42)
 
 # n bootstrap iterations
-n_boots <- 2000
+n_boots <- 5000
 
 dir.create("models")
 dir.create("plots")
@@ -79,8 +79,7 @@ data_processed <- read_csv("../data/scored/data_scored_trimmed.csv")
 
 # exclusions
 data_processed_outliers_removed <- data_processed %>%
-  filter(met_performance_criteria_typical == TRUE) %>%
-  select(-D_overall)
+  filter(met_performance_criteria_typical == TRUE)
 
 # d scoring
 data_long <- data_processed_outliers_removed %>%
@@ -365,11 +364,57 @@ plot_domains
 
 ### Effect sizes
 
-Comparison of frequentist effect sizes: eta squared, partial eta squared, and generalized eta squared.
+Comparison of effect sizes: eta squared, partial eta squared, and generalized eta squared.
 
-#### Bootstrap effect size estimates
+```{r}
 
-via case removal and percentile method with 2000 replications.
+fit <- data_long_known_stimuli %>%
+  # reshape so that participants are sampled between bootstraps
+  select(unique_id, Domain, trial_type, D) %>%
+  spread(trial_type, D) %>%
+  rename(tt1 = `Category 1\npositive`,
+         tt2 = `Category 1\nnegative`,
+         tt3 = `Category 2\npositive`,
+         tt4 = `Category 2\nnegative`) %>%
+  # undo reshaping
+  gather(trial_type, D, c("tt1", "tt2", "tt3", "tt4")) %>%
+  # fit anova
+  ez::ezANOVA(data     = .,
+              dv       = D,
+              within   = trial_type,
+              between  = Domain,
+              wid      = unique_id,
+              type     = 3,
+              detailed = TRUE)
+  
+# eta squared and generalized eta squared
+results_etasq <- 
+  fit$ANOVA %>%
+  mutate(etasq = SSn / sum(SSn)) %>%
+  select(Effect, etasq) 
+
+# partial eta squared
+results_petasq_and_getasq <- 
+  anova_out_no_rounding(fit, 
+                        etasq = "partial", 
+                        sph.cor = "no",
+                        print = FALSE)$ANOVA_RESULTS %>%
+  mutate(petasq = as.numeric(as.character(petasq)),
+         getasq = as.numeric(as.character(getasq))) %>%
+  select(Effect, petasq, getasq)
+
+# combine
+results_proportion_of_variance_effect_size <- 
+  results_etasq %>%
+  left_join(results_petasq_and_getasq, by = "Effect")
+
+```
+
+#### Bootstrapped 90% confidence intervals
+
+via case removal and percentile method with 5000 replications.
+
+Note that 90% confidence intervals should be calculated rather than 95% as eta squared and its variants are necessarily positive.  
 
 ```{r fig.height=9, fig.width=9}
 
@@ -394,7 +439,7 @@ if (file.exists("models/boot_fits_domains.rds")) {
   # analysis workflow to be bootstrapped
   helper_function <- function(split) {
     
-    fit_anova_freq <- analysis(split) %>%
+    fit_anova <- analysis(split) %>%
       # undo reshaping
       gather(trial_type, D, c("tt1", "tt2", "tt3", "tt4")) %>%
       # fit anova
@@ -408,13 +453,13 @@ if (file.exists("models/boot_fits_domains.rds")) {
     
     # eta squared and generalized eta squared
     results_etasq <- 
-      fit_anova_freq$ANOVA %>%
+      fit_anova$ANOVA %>%
       mutate(etasq = SSn / sum(SSn)) %>%
       select(Effect, etasq) 
     
     # partial eta squared
     results_petasq_and_getasq <- 
-      anova_out_no_rounding(fit_anova_freq, 
+      anova_out_no_rounding(fit_anova, 
                             etasq = "partial", 
                             sph.cor = "no",
                             print = FALSE)$ANOVA_RESULTS %>%
@@ -451,27 +496,47 @@ if (file.exists("models/boot_fits_domains.rds")) {
 ```{r}
 
 # find CIs using percentile method
+# boot_estimates_domain <- boot_fits_domains %>%
+#   group_by(Effect) %>%
+#   dplyr::summarize(etasq_ci_lower  = quantile(etasq,  0.05),
+#                    etasq_ci_upper  = quantile(etasq,  0.95),
+#                    petasq_ci_lower = quantile(petasq, 0.05),
+#                    petasq_ci_upper = quantile(petasq, 0.95),
+#                    getasq_ci_lower = quantile(getasq, 0.05),
+#                    getasq_ci_upper = quantile(getasq, 0.95),
+#                    getasq_se       = sd(getasq)) 
+
 boot_estimates_domain <- boot_fits_domains %>%
   group_by(Effect) %>%
-  dplyr::summarize(etasq_median    = quantile(etasq,  0.50),
-                   etasq_ci_lower  = quantile(etasq,  0.05),
-                   etasq_ci_upper  = quantile(etasq,  0.95),
-                   petasq_median   = quantile(petasq, 0.50),
-                   petasq_ci_lower = quantile(petasq, 0.05),
-                   petasq_ci_upper = quantile(petasq, 0.95),
-                   getasq_median   = quantile(getasq, 0.50),
-                   getasq_ci_lower = quantile(getasq, 0.05),
-                   getasq_ci_upper = quantile(getasq, 0.95),
-                   getasq_se       = sd(getasq)) 
+  dplyr::summarize(etasq_se  = sd(etasq),
+                   petasq_se = sd(petasq),
+                   getasq_se = sd(getasq)) 
 
-boot_estimates_domain %>%
+# .95 for 90% intervals, as its .05 each side
+critical_value <- qnorm(0.95, mean = 0, sd = 1, lower.tail = TRUE) 
+
+results_proportion_of_variance <- 
+  results_proportion_of_variance_effect_size %>%
+  left_join(boot_estimates_domain, by = "Effect") %>%
+  mutate(etasq_ci_lower  = etasq - etasq_se*critical_value,
+         etasq_ci_upper  = etasq + etasq_se*critical_value,
+         petasq_ci_lower = petasq - petasq_se*critical_value,
+         petasq_ci_upper = petasq + petasq_se*critical_value,
+         getasq_ci_lower = getasq - getasq_se*critical_value,
+         getasq_ci_upper = getasq + getasq_se*critical_value) %>%
+  select(Effect, 
+         etasq, etasq_ci_lower, etasq_ci_upper, 
+         petasq, petasq_ci_lower, petasq_ci_upper, 
+         getasq, getasq_ci_lower, getasq_ci_upper, getasq_se) 
+
+results_proportion_of_variance %>%
   round_df(3) %>%
   kable() %>%
   kable_classic(full_width = FALSE)
 
 ```
 
-#### Hypothesis tests
+### Hypothesis tests
 
 Effect size estimates, their 95% CIs and standard errors were estimated via bootstrapping. 
 
@@ -502,18 +567,18 @@ After calculating estimates of difference scores and their SEs, these were then 
 
 # method from https://cscu.cornell.edu/wp-content/uploads/73_ci.pdf
 
-data_geta_wrangled <- boot_estimates_domain |>
+data_geta_wrangled <- results_proportion_of_variance |>
   filter(Effect != "(Intercept)") |>
-  select(Effect, getasq_median, getasq_se) |>
+  select(Effect, getasq, getasq_se) |>
   pivot_wider(names_from = "Effect", 
-              values_from = c("getasq_median", "getasq_se")) |>
+              values_from = c("getasq", "getasq_se")) |>
   janitor::clean_names() |>
-  select(trialtype_est = getasq_median_trial_type,
+  select(trialtype_est = getasq_trial_type,
          trialtype_se = getasq_se_trial_type,
-         domain_est = getasq_median_domain,
+         domain_est = getasq_domain,
          domain_se = getasq_se_domain,
-         interaction_est = getasq_median_domain_trial_type,
-         interaction_se = getasq_se_domain_trial_type,)
+         interaction_est = getasq_domain_trial_type,
+         interaction_se = getasq_se_domain_trial_type)
 
 data_geta_wrangled |>
   mutate(trialtype_domain_est = trialtype_est - domain_est,
@@ -536,12 +601,12 @@ data_geta_wrangled |>
 
 ```
 
-#### Plot
+### Plot
 
-```{r}
+```{r fig.height=5, fig.width=6}
 
 # plots
-data_for_plotting_domains <- boot_estimates_domain %>%
+data_for_plotting_domains <- results_proportion_of_variance %>%
   filter(Effect != "(Intercept)") %>%
   mutate(Effect = recode(Effect,
                          "trial_type" = "Trial type",
@@ -551,7 +616,7 @@ data_for_plotting_domains <- boot_estimates_domain %>%
          color = ifelse(Effect == "Trial type", FALSE, TRUE))
 
 p1 <- 
-  ggplot(data_for_plotting_domains, aes(Effect, etasq_median, color = color)) +
+  ggplot(data_for_plotting_domains, aes(Effect, etasq, color = color)) +
   geom_point() +
   geom_linerange(aes(ymin = etasq_ci_lower, ymax = etasq_ci_upper)) +
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
@@ -564,12 +629,12 @@ p1 <-
   theme(legend.position = "none")
 
 p2 <- 
-  ggplot(data_for_plotting_domains, aes(Effect, petasq_median, color = color)) +
+  ggplot(data_for_plotting_domains, aes(Effect, petasq, color = color)) +
   geom_point() +
   geom_linerange(aes(ymin = petasq_ci_lower, ymax = petasq_ci_upper)) +
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
-  ylim(0, .3) +
+  ylim(0, .25) +
   theme_linedraw() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[p]^2)) +
@@ -577,12 +642,12 @@ p2 <-
   theme(legend.position = "none")
 
 p3 <- 
-  ggplot(data_for_plotting_domains, aes(Effect, getasq_median, color = color)) +
+  ggplot(data_for_plotting_domains, aes(Effect, getasq, color = color)) +
   geom_point() +
   geom_linerange(aes(ymin = getasq_ci_lower, ymax = getasq_ci_upper)) +
   scale_color_viridis_d(begin = 0.3, end = 0.7) +
   coord_flip() +
-  ylim(0, .2) +
+  ylim(0, .17) +
   theme_linedraw() +
   geom_hline(yintercept = 0, linetype = "dotted") +
   ylab(bquote(eta[g]^2)) +
@@ -602,8 +667,6 @@ ggsave("plots/plot_effect_sizes.pdf",
 #write_rds(plot_effect_sizes, "models/plot_effect_sizes.rds")
 
 ```
-
-NB 90% CIs as squared effect sizes are always positive!
 
 ## Compare known-word vs non-word IRAPs
 

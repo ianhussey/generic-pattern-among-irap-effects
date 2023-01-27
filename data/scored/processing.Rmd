@@ -34,22 +34,18 @@ take only domains that meet inclusion criteria: single word evaluative attribute
 
 # take data from main dataset repo (https://github.com/ianhussey/irap-reliability-meta-analysis)
 data_scored_trimmed <- read.csv("data_scored.csv") %>%
-  filter(domain %in% c("Body image", 
-                       "Clinton-Trump", 
+  filter(domain %in% c("Clinton-Trump", 
                        "Death (1)", 
                        "Death (2)", 
                        "Death (3)",
                        "Friend-Enemy", 
                        "Lincoln-Hitler", 
                        "Non-words",
-                       "Race (1)", 
                        "Race (2)",
                        "Religion", 
-                       "Rich-Poor", 
-                       "Stigma - ADHD",
-                       "Stigma - PTSD", 
-                       "Stigma - Schizophrenia") & 
+                       "Rich-Poor") & 
            timepoint == 1) %>%
+  mutate(domain = dplyr::recode(domain, "Race (2)" = "Race")) |>
   select(-PI_overall, -PI_tt1, -PI_tt2, -PI_tt3, -PI_tt4)
 
 ```
