@@ -27,6 +27,7 @@ library(emmeans)
 library(knitr)
 library(kableExtra)
 library(ez)
+library(scales)
 library(plotrix)
 library(rsample)
 library(broom)
@@ -250,20 +251,15 @@ NB plotting uses hard coded values - must update if results were to change due t
 
 ```{r}
 
-fit <- lmer(D ~ trial_type + (1 | Domain) + (1 | unique_id), 
-            data = data_long_known_stimuli)
+fit_1 <- lmer(D ~ trial_type + (1 | Domain) + (1 | unique_id), 
+              data = data_long_known_stimuli)
 
-tab_model(fit, digits = 3)
+#tab_model(fit_1, digits = 3)
 
-data_generic_pattern <- 
-  data.frame(trial_type = c("Category 1\npositive",
-                            "Category 1\nnegative",
-                            "Category 2\npositive",
-                            "Category 2\nnegative"),
-             D_mean     = c(+0.342, +0.138, -0.199, +0.019), # values calculated manually from lmer results table, ie intercept + level
-             D_ci_lower = c(+0.300, +0.062, -0.275, -0.058),
-             D_ci_upper = c(+0.383, +0.214, -0.123, +0.094),
-             Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
+data_generic_pattern <- summary(emmeans(fit_1, 1 ~ trial_type)) |>
+  as.data.frame() |>
+  rename(D_mean = emmean, D_ci_lower = lower.CL, D_ci_upper = upper.CL) |>
+  mutate(Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
 
 plot_generic_pattern <-
   data_generic_pattern %>%
@@ -309,32 +305,32 @@ ggsave("plots/plot_generic_pattern_2.pdf",
 ```{r, fig.height=6, fig.width=10}
 
 # fit model
-fit <- 
+fit_2 <- 
   aov(D ~ trial_type * Domain + Error(unique_id / trial_type), 
       data = data_long_known_stimuli,
       contrasts = list(trial_type = "contr.sum",
                        Domain = "contr.sum"))
 
 # extract marginal means
-data_emms <- summary(emmeans(fit, 1 ~ trial_type:Domain))
+data_emms_2 <- summary(emmeans(fit_2, 1 ~ trial_type:Domain))
 
 plot_domains <- 
   ggplot() +
   geom_hline(yintercept = c(0), linetype = "dotted") +
-  geom_linerange(data = data_emms, 
+  geom_linerange(data = data_emms_2, 
                  aes(x = trial_type, 
                      ymax = lower.CL,
                      ymin = upper.CL,
                      colour = Domain),
                  position = position_dodge(width = .4)) +
   geom_point(
-    data = data_emms, aes(x = trial_type, y = emmean, colour = Domain),
+    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain),
     #aes(shape = Domain),
     size = 1.5,
     position = position_dodge(width = .4)
   ) +
   geom_line(
-    data = data_emms, aes(x = trial_type, y = emmean, colour = Domain),
+    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain),
     #aes(group = Domain),
     position = position_dodge(width = .4)
   ) +
@@ -351,6 +347,7 @@ plot_domains <-
   geom_point(data = data_generic_pattern, 
              aes(x = trial_type, y = D_mean, group = Type), 
              size = 3) +
+  scale_y_continuous(breaks = scales::breaks_width(.20)) +
   ylab(expression(paste(italic("D"), " score"))) +
   xlab("Trial type") +
   theme_linedraw() +
@@ -675,7 +672,7 @@ ggsave("plots/plot_effect_sizes.pdf",
 ```{r, fig.height=3, fig.width=5.5}
 
 # fit model
-fit_2 <- data_long |>
+fit_3 <- data_long |>
   mutate(Domain = ifelse(Domain != "Non-words", "Generic pattern", "Non-words")) %>%
   aov(D ~ trial_type * Domain + Error(unique_id / trial_type), 
       data = .,
@@ -683,23 +680,23 @@ fit_2 <- data_long |>
                        Domain = "contr.sum"))
 
 # extract marginal means
-data_emms_2 <- summary(emmeans(fit_2, 1 ~ trial_type:Domain))
+data_emms_3 <- summary(emmeans(fit_3, 1 ~ trial_type:Domain))
 
 plot_stimuli <- 
   ggplot() +
   geom_hline(yintercept = c(0), linetype = "dotted") +
-  geom_linerange(data = data_emms_2, 
+  geom_linerange(data = data_emms_3, 
                  aes(x = trial_type, 
                      ymax = lower.CL,
                      ymin = upper.CL,
                      colour = Domain),
                  position = position_dodge(width = .2)) +
   geom_line(
-    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain, group = Domain),
+    data = data_emms_3, aes(x = trial_type, y = emmean, colour = Domain, group = Domain),
     position = position_dodge(width = .2)
   ) +
   geom_point(
-    data = data_emms_2, aes(x = trial_type, y = emmean, colour = Domain, shape = Domain),
+    data = data_emms_3, aes(x = trial_type, y = emmean, colour = Domain, shape = Domain),
     size = 2.5,
     position = position_dodge(width = .2)
   ) +
