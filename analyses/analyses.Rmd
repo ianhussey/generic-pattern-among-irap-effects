@@ -302,7 +302,7 @@ ggsave("plots/plot_generic_pattern_2.pdf",
 
 ### Plot
 
-```{r, fig.height=6, fig.width=10}
+```{r, fig.height=8, fig.width=7}
 
 # fit model
 fit_2 <- 
@@ -488,21 +488,6 @@ if (file.exists("models/boot_fits_domains.rds")) {
 #   geom_density(adjust = 1) +
 #   facet_wrap(~ Effect + key, scales = "free", ncol = 3)
 
-```
-
-```{r}
-
-# find CIs using percentile method
-# boot_estimates_domain <- boot_fits_domains %>%
-#   group_by(Effect) %>%
-#   dplyr::summarize(etasq_ci_lower  = quantile(etasq,  0.05),
-#                    etasq_ci_upper  = quantile(etasq,  0.95),
-#                    petasq_ci_lower = quantile(petasq, 0.05),
-#                    petasq_ci_upper = quantile(petasq, 0.95),
-#                    getasq_ci_lower = quantile(getasq, 0.05),
-#                    getasq_ci_upper = quantile(getasq, 0.95),
-#                    getasq_se       = sd(getasq)) 
-
 boot_estimates_domain <- boot_fits_domains %>%
   group_by(Effect) %>%
   dplyr::summarize(etasq_se  = sd(etasq),
@@ -669,7 +654,7 @@ ggsave("plots/plot_effect_sizes.pdf",
 
 ### Plot
 
-```{r, fig.height=3.5, fig.width=5.5}
+```{r, fig.height=4, fig.width=7}
 
 # fit model
 fit_3 <- data_long |>
@@ -751,7 +736,7 @@ data_long_unknown_stimuli |>
 
 Valid and invalid inferences using a hypothetical data for a commonly employed design within IRAP research (i.e., comparisons between two known groups).  
 
-```{r fig.height=4, fig.width=6}
+```{r, fig.height=4, fig.width=7}
 
 # data
 data_recommendations <- 
