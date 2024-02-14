@@ -261,6 +261,11 @@ data_generic_pattern <- summary(emmeans(fit_1, 1 ~ trial_type)) |>
   rename(D_mean = emmean, D_ci_lower = lower.CL, D_ci_upper = upper.CL) |>
   mutate(Type = c("Generic pattern", "Generic pattern", "Generic pattern", "Generic pattern"))
 
+data_generic_pattern |>
+  round_df(2) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
 plot_generic_pattern <-
   data_generic_pattern %>%
   separate(trial_type, into = c("Category", "Attribute"), sep = "\n") %>%
@@ -302,7 +307,7 @@ ggsave("plots/plot_generic_pattern_2.pdf",
 
 ### Plot
 
-```{r, fig.height=8, fig.width=7}
+```{r, fig.height=4, fig.width=7}
 
 # fit model
 fit_2 <- 
@@ -356,6 +361,20 @@ plot_domains <-
 plot_domains
 
 #write_rds(plot_domains, "models/plot_domains.rds")
+
+ggsave("plots/plot_domains.png",
+       device = "png",
+       plot = plot_domains,
+       width = 7,
+       height = 4,
+       units = "in")
+
+ggsave("plots/plot_domains.pdf",
+       device = "pdf",
+       plot = plot_domains,
+       width = 7,
+       height = 4,
+       units = "in")
 
 ```
 
@@ -812,7 +831,22 @@ ggsave("plots/plot_recommendations.pdf",
 
 ```
 
+Example of valid and invalid analyses when using a 4 (within: trial type) X 2 (between: condition) RM-ANOVA:
+
+- Main effect for trial type: invalid due to confounding. 
+- Main effect for condition: Valid but the post hoc comparisons at the trial type level are invalid, mostly removing the supposed main benefit of using the IRAP.
+- Interaction effect: invalid due to massively inflated false-positive rates.
+- Post hoc comparisons:
+  - Difference from zero for a given trial type (i.e., example (a) in the plot): invalid due to confounding.
+  - Differences between trial types within a group: invalid due to confounding.
+  - Differences within a trial type between groups: invalid due to massively inflated false-positive rates.
 
 
+Summary of issues: [needs work]
+confounding
+You will typically observe this effect, but it is misinterpreted due to confounding. e.g., it is typically interpreted as evidence for the presence of a implicit attitudes/preexperimental verbal relations between (for example) "white people" and "positive", but in fact the effect would be shown regardless of whether the attitude object was "white people" or any many other attitude domains including non-words that have no strong pre-experimental verbal relations. Effect is likely due to the relationship between "positive" and the response option "true" (slightly positively valenced) vs. "false" (slightly negative).
+
+main effect for group vs post hoc comparisons at trial type level
+However, the main benefit of the IRAP is nominally that it separately separate trial types. The overall main effect for condition does not do this, and the tests that do separate the trial types suffer from massively inflated false positives (see post hoc comparisons below).
 
 
